@@ -18,7 +18,7 @@ if (Test-Path $builder) {
     $start.FileName = $builder
     $start.UseShellExecute = $false
     # .NET Framework used by PowerShell 5.1 has no ArgumentList; Windows paths cannot contain quotes.
-    $quoted = @('--build') + $buildArgs | ForEach-Object { '"' + $_.TrimEnd('\') + '"' }
+    $quoted = @('--build') + $buildArgs | ForEach-Object { '"' + [regex]::Replace($_, '(\\+)$', '$1$1') + '"' }
     $start.Arguments = $quoted -join ' '
     $process = [System.Diagnostics.Process]::Start($start)
     try { $process.WaitForExit(); exit $process.ExitCode } finally { $process.Dispose() }

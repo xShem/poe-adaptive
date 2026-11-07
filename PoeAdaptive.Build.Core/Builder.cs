@@ -29,6 +29,9 @@ public static class Processes
         foreach (var arg in args) start.ArgumentList.Add(arg);
         start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         start.Environment["DOTNET_NOLOGO"] = "1";
+        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        start.Environment["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
+        start.Environment["UseSharedCompilation"] = "false";
         using var process = new Process { StartInfo = start };
         cancellation.ThrowIfCancellationRequested();
         if (!process.Start()) throw new IOException("Не удалось запустить " + file);
@@ -37,7 +40,9 @@ public static class Processes
         async Task Drain(StreamReader reader)
         {
             while (await reader.ReadLineAsync() is { } line)
-            { lock (output) output.AppendLine(line); log?.Invoke(line); }
+            { lock (output) output.AppendLine(line);
+                try { log?.Invoke(line); }
+                catch { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } throw; } }
         }
         var drainOut = Drain(process.StandardOutput); var drainError = Drain(process.StandardError);
         await process.WaitForExitAsync(CancellationToken.None);

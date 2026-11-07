@@ -240,6 +240,11 @@ static class AdditionalChecks
                 Check(exited); } catch (ArgumentException) { } catch (FileNotFoundException) { }
 
         });
+        test("A log write failure terminates the build process instead of hanging", () =>
+        {
+            Throws<IOException>(() => Processes.Run(DotnetHost, [typeof(AdditionalChecks).Assembly.Location, "--wait-child"], root,
+                _ => throw new IOException("synthetic disk-full log failure"), CancellationToken.None).GetAwaiter().GetResult());
+        });
         test("Builder snapshot excludes generated files and preserves Cyrillic source", () =>
         {
             var source = Area("Исходники Builder"); Directory.CreateDirectory(Path.Combine(source, "bin")); File.WriteAllText(Path.Combine(source, "bin", "generated"), "ignored"); File.WriteAllText(Path.Combine(source, "текст.cs"), "source"); File.WriteAllText(Path.Combine(source, "oo2core.dll"), "must never redistribute");
