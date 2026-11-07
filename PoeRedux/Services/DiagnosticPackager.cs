@@ -115,14 +115,14 @@ public sealed class DiagnosticPackager(string dataRoot)
     private static string HashText(string text) => Hash(Encoding.UTF8.GetBytes(text));
     private string CachePath(GameInstall i, string ruleHash) =>
         Path.Combine(CacheRoot, i.Key, HashText(i.BuildId + "|" + ruleHash)[..24]);
-    private sealed record VerifiedStamp(string Installation, string Version, string ResourceSha256, DateTimeOffset ConfirmedAt);
+    private sealed record VerifiedStamp(string Installation, string Version, string ResourceSha256, string ResourceHint, DateTimeOffset ConfirmedAt);
     private string VerifiedPath(GameInstall i) => Path.Combine(CacheRoot, i.Key, "verified-" + HashText(i.BuildId)[..16] + ".json");
     /// <summary>Records explicit user attestation after official client file verification.</summary>
     public void ConfirmVerified(GameInstall i)
     {
         FileSafety.RequireIdle(i, false);
         BuildStore.SaveJson(VerifiedPath(i), new VerifiedStamp(i.Key, i.BuildId,
-            BuildStore.HashFile(i.ResourcePath), DateTimeOffset.UtcNow));
+            BuildStore.HashFile(i.ResourcePath), VersionTracker.Hint(i), DateTimeOffset.UtcNow));
     }
     private bool HasAttestation(GameInstall i, string hash)
     {
@@ -131,7 +131,8 @@ public sealed class DiagnosticPackager(string dataRoot)
         try
         {
             var stamp = JsonSerializer.Deserialize<VerifiedStamp>(File.ReadAllText(path));
-            return stamp?.Installation == i.Key && stamp.Version == i.BuildId && stamp.ResourceSha256 == hash;
+            return stamp?.Installation == i.Key && stamp.Version == i.BuildId && stamp.ResourceSha256 == hash
+                && stamp.ResourceHint == VersionTracker.Hint(i);
         }
         catch (JsonException) { return false; }
     }
