@@ -81,9 +81,9 @@ public static class DiagnosticCatalog
         var known = new[] { ".ot", ".otc", ".env", ".txt", ".csd", ".ao", ".aoc", ".pet", ".epk",
             ".ffx", ".mat", ".hlsl", ".fxgraph" };
         if (!known.Any(e => path.EndsWith(e, StringComparison.OrdinalIgnoreCase))) return (null, "binary");
-        if (data.StartsWith([0xff, 0xfe])) return (Encoding.Unicode.GetString(data[2..]), "utf-16le-bom");
-        if (data.StartsWith([0xfe, 0xff])) return (Encoding.BigEndianUnicode.GetString(data[2..]), "utf-16be-bom");
-        if (data.StartsWith([0xef, 0xbb, 0xbf])) return (StrictUtf8(data[3..]), "utf-8-bom");
+        if (data.StartsWith(new byte[] { 0xff, 0xfe })) return (Encoding.Unicode.GetString(data[2..]), "utf-16le-bom");
+        if (data.StartsWith(new byte[] { 0xfe, 0xff })) return (Encoding.BigEndianUnicode.GetString(data[2..]), "utf-16be-bom");
+        if (data.StartsWith(new byte[] { 0xef, 0xbb, 0xbf })) return (StrictUtf8(data[3..]), "utf-8-bom");
         if (data.Length >= 4 && data[1] == 0 && data[3] == 0)
             return (Encoding.Unicode.GetString(data), "utf-16le");
         if (data.IndexOf((byte)0) >= 0) return (null, "binary-or-unsupported-encoding");
