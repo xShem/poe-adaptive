@@ -47,6 +47,9 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Builder failed: $($process.ExitCode)" }
           $built = Get-ChildItem 'artifacts/Сборка без сети' -Directory | Select-Object -First 1
           if (-not (Test-Path (Join-Path $built.FullName 'app/PoeAdaptive.exe'))) { throw 'Builder did not create app' }
+      - name: Verify source script supports cached offline rebuild
+        shell: pwsh
+        run: ./Build.ps1 -Output "$PWD/artifacts/Скрипт без сети" -Offline -SdkCache "$PWD/artifacts/SDK cache"
       - name: Stage release packages from the tested commit
         shell: pwsh
         run: |

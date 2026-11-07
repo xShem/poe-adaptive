@@ -53,5 +53,15 @@ if (!($sdks | Where-Object { $_ -match ('^' + [regex]::Escape($spec.version) + '
     } finally { Remove-Item -LiteralPath $job -Recurse -Force }
 }
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
-& $dotnet run --project (Join-Path $Source 'PoeAdaptive.BuildHost') -c Release -- @buildArgs --dotnet $dotnet
+$hostProject = Join-Path $Source 'PoeAdaptive.BuildHost'
+if ($Offline) {
+    $offlineFeed = Join-Path $SdkCache 'offline-feed'
+    New-Item -ItemType Directory -Force $offlineFeed | Out-Null
+    & $dotnet restore $hostProject --locked-mode --source $offlineFeed
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+} else {
+    & $dotnet restore $hostProject --locked-mode
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+& $dotnet run --project $hostProject -c Release --no-restore -- @buildArgs --dotnet $dotnet
 exit $LASTEXITCODE
