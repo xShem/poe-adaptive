@@ -233,8 +233,14 @@ public sealed class AdaptivePatcher
             var selected = PatchCatalog.Create(install.Game).Where(p => profile.Patches.Contains(PatchCatalog.Id(p))).ToArray();
             if (selected.Length != profile.Patches.Distinct().Count() || selected.Length == 0)
                 throw new InvalidDataException("Выберите поддерживаемые функции для этой игры.");
-            store.EnsureBaseline(before);
+            var baselineState = store.EnsureBaseline(before);
             var baseline = store.OriginalIndex;
+            // Best-effort small diagnostic baseline; never delay a valid analysis because a cache cannot be written.
+            if (baselineState.OriginalHash == before && baselineState.CurrentHash == before)
+            {
+                try { new DiagnosticPackager(dataRoot).CaptureOriginals(install, baseline, RulesPath, selected.Select(PatchCatalog.Id)); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { progress?.Invoke("Диагностический эталон недоступен: " + ex.GetType().Name); }
+            }
             using (var session = adapter.Stage(install, baseline, work))
             {
                 var index = session.Index;
