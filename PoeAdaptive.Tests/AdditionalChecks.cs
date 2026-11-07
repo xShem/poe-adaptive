@@ -258,6 +258,37 @@ static class AdditionalChecks
             Throws<Exception>(() => { using var reader = PoeRedux.Services.DiagnosticResourceReader.Open(external, i.Format); _ = reader.Paths; });
             Check(BuildStore.HashFile(external) == checksum);
         });
+        test("Diagnostic ZIP manifest hashes and unexpected entries are enforced", () =>
+        {
+            var zipPath = Path.Combine(temp, "synthetic diagnostic Кириллица.zip");
+            byte[] raw = Encoding.Unicode.GetBytes("тестовый ресурс");
+            var member = "resources/current/данные.env";
+            var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(raw));
+            using (var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                void Add(string name, byte[] bytes)
+                {
+                    using var output = zip.CreateEntry(name).Open();
+                    output.Write(bytes);
+                }
+                Add("manifest.json", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+                {
+                    SchemaVersion = 1, Part = 1, Parts = 1, Consistent = true,
+                    Files = new[] { new { ZipPath = member, Size = (long)raw.Length, Sha256 = digest } }
+                })));
+                Add("README-FOR-AI.md", "Synthetic only"u8.ToArray());
+                Add("PROMPT.txt", "Analyze synthetic resources"u8.ToArray());
+                Add("summary.txt", "Synthetic manifest"u8.ToArray());
+                Add(member, raw);
+            }
+            PoeRedux.Services.DiagnosticArchiveValidator.Validate(zipPath);
+            using (var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Update))
+            {
+                using var output = zip.CreateEntry("resources/current/unlisted.bin").Open();
+                output.Write([1, 2, 3]);
+            }
+            Throws<InvalidDataException>(() => PoeRedux.Services.DiagnosticArchiveValidator.Validate(zipPath));
+        });
         test("Pinned SDK and checksum validation do not require a game or Oodle", () =>
         {
             Check(SdkSpec.Pinned.Version == "10.0.403" && new Uri(SdkSpec.Pinned.Url).Host == "builds.dotnet.microsoft.com");
