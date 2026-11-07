@@ -18,6 +18,10 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ColorModsViewModel> colors = [];
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(20) };
     private readonly HashSet<string> failedBuilds = [];
+    private readonly HashSet<string> diagnosedBuilds = [];
+    private CancellationTokenSource? diagnosticCancellation;
+    private DiagnosticExport? diagnosticResult;
+    private bool diagnosticRunning;
     private List<GameInstall> installs = [];
     private GameInstall? selected;
     private PreparedPatch? prepared;
@@ -30,7 +34,13 @@ public partial class MainWindow : Window
         PatchesItemsControl.ItemsSource = patches;
         Loaded += (_, _) => { FindGames(); timer.Start(); };
         timer.Tick += async (_, _) => await PollUpdates();
-        Closed += (_, _) => { timer.Stop(); prepared?.Dispose(); };
+        Closing += (_, e) =>
+        {
+            if (!diagnosticRunning) return;
+            diagnosticCancellation?.Cancel(); e.Cancel = true;
+            StatusText.Text = "Отмена диагностики… Дождитесь завершения чтения, затем закройте окно.";
+        };
+        Closed += (_, _) => { timer.Stop(); diagnosticCancellation?.Cancel(); prepared?.Dispose(); };
     }
 
     private void InvalidatePlan()
@@ -174,11 +184,34 @@ public partial class MainWindow : Window
             var profile = CaptureProfile();
             var required = ResourceAdapters.EstimateAdditionalSpace(install);
             StatusText.Text = $"Подготовка ресурсов. Резерв места: {required / 1073741824.0:F1} ГиБ. GGPK обрабатывается на отдельной копии.";
-            prepared = await Task.Run(() => patcher.Analyze(install, profile,
-                message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
-            ShowResults(prepared);
-            StatusText.Text = prepared.CanApply ? "План готов. Проверьте результат и примените изменения."
-                : "Снимите выбор функций без изменений и повторите анализ.";
+            Exception? analysisError = null;
+            try
+            {
+                prepared = await Task.Run(() => patcher.Analyze(install, profile,
+                    message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
+                ShowResults(prepared);
+            }
+            catch (Exception ex) { analysisError = ex; }
+            if (analysisError is not null || prepared is { CanApply: false })
+            {
+                try
+                {
+                    var report = await Task.Run(() => new DiagnosticPackager(AdaptivePatcher.DataRoot).Export(
+                        new DiagnosticOptions(install, profile.Patches, Actual: analysisError?.GetType().Name), prepared,
+                        message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
+                    diagnosticResult = report;
+                    OpenDiagnosticButton.IsEnabled = true;
+                    CopyDiagnosticButton.IsEnabled = true;
+                    StatusText.Text = $"Проблемный анализ: диагностический ZIP готов ({report.ZipPaths.Length} частей). " +
+                        (analysisError?.Message ?? "Найден нулевой результат.");
+                }
+                catch (Exception diagnosticError)
+                {
+                    StatusText.Text = "Диагностика недоступна: " + diagnosticError.Message;
+                    if (analysisError is not null) throw analysisError;
+                }
+            }
+            else StatusText.Text = "План готов. Проверьте результат и примените изменения.";
         });
     }
     private async void Apply_Click(object sender, RoutedEventArgs e)
@@ -219,6 +252,7 @@ public partial class MainWindow : Window
             var store = new BuildStore(AdaptivePatcher.DataRoot, install);
             using var gate = store.Lock();
             var fresh = await Task.Run(() => VersionTracker.AcceptVerified(install));
+            await Task.Run(() => new DiagnosticPackager(AdaptivePatcher.DataRoot).ConfirmVerified(fresh));
             installs.RemoveAll(i => i.Key == fresh.Key); installs.Add(fresh);
             GameSelector.ItemsSource = installs.ToArray(); GameSelector.SelectedItem = fresh;
             StatusText.Text = "Исходная версия принята по вашему подтверждению. Выполните новый анализ.";
@@ -228,6 +262,61 @@ public partial class MainWindow : Window
     {
         Directory.CreateDirectory(AdaptivePatcher.DataRoot);
         Process.Start(new ProcessStartInfo(AdaptivePatcher.DataRoot) { UseShellExecute = true });
+    }
+
+    private async void Diagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (selected is null || busy) return;
+        var install = selected;
+        var selectedFeatures = patches.Where(p => p.IsSelected).Select(p => PatchCatalog.Id(p.Patch)).ToArray();
+        var options = new DiagnosticOptions(install, selectedFeatures, ExpectedText.Text, ActualText.Text);
+        diagnosticCancellation?.Dispose();
+        diagnosticCancellation = new CancellationTokenSource();
+        var cancellation = diagnosticCancellation.Token;
+        busy = true;
+        diagnosticRunning = true;
+        foreach (UIElement child in MainGrid.Children)
+            if (System.Windows.Controls.Grid.GetRow(child) != 4) child.IsEnabled = false;
+        CancelDiagnosticButton.IsEnabled = true;
+        OpenDiagnosticButton.IsEnabled = false;
+        CopyDiagnosticButton.IsEnabled = false;
+        diagnosticResult = null;
+        Progress.Visibility = Visibility.Visible;
+        try
+        {
+            var packager = new DiagnosticPackager(AdaptivePatcher.DataRoot);
+            diagnosticResult = await Task.Run(() => packager.Export(options, prepared,
+                message => Dispatcher.BeginInvoke(() => StatusText.Text = message), cancellation), cancellation);
+            OpenDiagnosticButton.IsEnabled = true;
+            CopyDiagnosticButton.IsEnabled = true;
+            StatusText.Text = $"Готово: {diagnosticResult.ZipPaths.Length} ZIP, {diagnosticResult.TotalBytes / 1024.0:F0} КиБ. Файлы игры не изменены.";
+        }
+        catch (OperationCanceledException) { StatusText.Text = "Подготовка диагностики отменена."; }
+        catch (Exception ex) { ShowError(ex); }
+        finally
+        {
+            diagnosticRunning = false;
+            busy = false;
+            foreach (UIElement child in MainGrid.Children) child.IsEnabled = true;
+            CancelDiagnosticButton.IsEnabled = false;
+            Progress.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void CancelDiagnostic_Click(object sender, RoutedEventArgs e) => diagnosticCancellation?.Cancel();
+
+    private void OpenDiagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (diagnosticResult is not { ZipPaths.Length: > 0 }) return;
+        var first = diagnosticResult.ZipPaths[0];
+        Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + first + "\"") { UseShellExecute = true });
+    }
+
+    private void CopyDiagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (diagnosticResult is null) return;
+        Clipboard.SetText(diagnosticResult.Prompt);
+        StatusText.Text = "Запрос для ChatGPT скопирован. Приложите все части ZIP.";
     }
 
     private async Task PollUpdates()
@@ -245,6 +334,30 @@ public partial class MainWindow : Window
             Profile? profile;
             try { fresh = await Task.Run(candidate.Refresh); profile = patcher.LoadProfile(fresh); }
             catch (Exception ex) { StatusText.Text = $"Ожидание готовности клиента: {ex.Message}"; continue; }
+            // Export on a confirmed installation build change, regardless of auto-apply settings.
+            // Never turn a failed/unknown version check into an accepted baseline.
+            if (candidate.BuildId.Length > 0 && fresh.BuildId != candidate.BuildId)
+            {
+                var diagnosticKey = fresh.Key + ":" + fresh.BuildId;
+                if (diagnosedBuilds.Add(diagnosticKey))
+                {
+                    await Run(async () =>
+                    {
+                        try
+                        {
+                            var features = profile?.Patches ?? [];
+                            var packager = new DiagnosticPackager(AdaptivePatcher.DataRoot);
+                            var result = await Task.Run(() => packager.Export(new DiagnosticOptions(fresh,
+                                features, Automatic: true, PriorVersion: candidate.BuildId)));
+                            diagnosticResult = result;
+                            OpenDiagnosticButton.IsEnabled = true;
+                            CopyDiagnosticButton.IsEnabled = true;
+                            StatusText.Text = $"Обновление: создан диагностический пакет ({result.ZipPaths.Length} частей).";
+                        }
+                        catch (Exception ex) { StatusText.Text = "Диагностика обновления отложена: " + ex.Message; }
+                    });
+                }
+            }
             if (profile == null || !profile.AutoApply || profile.LastBuild.Length == 0 || profile.LastBuild == fresh.BuildId) continue;
             var key = fresh.Key + ":" + fresh.BuildId;
             if (failedBuilds.Contains(key)) continue;

@@ -1,3 +1,4 @@
+using PoeRedux.Services;
 using System.Text;
 using System.Text.Json;
 using LibGGPK3;
@@ -210,6 +211,126 @@ static class AdditionalChecks
             using (var held = new FileStream(external, FileMode.Open, FileAccess.Read, FileShare.None)) Throws<IOException>(() => FileSafety.RequireIdle(i));
             Throws<IOException>(() => FileSafety.RequireSpace(temp, 1000, _ => 999));
             Throws<IOException>(() => BuildPipeline.RequireSpace(temp, 1000, _ => 0));
+        });
+        test("Diagnostic catalog covers both feature sets and ordered JSON overrides", () =>
+        {
+            foreach (var game in new[] { GameId.PoE1, GameId.PoE2 })
+                foreach (var patch in PoeRedux.Services.PatchCatalog.Create(game))
+                    Check(PoeRedux.Services.DiagnosticCatalog.For(game, PoeRedux.Services.PatchCatalog.Id(patch), []).Length > 0);
+            var one = new TextRule("Rain", "2694490", "metadata/", ".env", "first", "A");
+            var two = one with { PathPrefix = "metadata/environmentsettings/", Pattern = "second" };
+            var targets = PoeRedux.Services.DiagnosticCatalog.For(GameId.PoE2, "Rain", [one, two]);
+            Check(targets.Length == 2 && targets[0].Source == "rules.json:0" && targets[1].Source == "rules.json:1");
+            Check(targets[0].Matches("metadata/foo.env") && !targets[1].Matches("metadata/foo.env"));
+        });
+        test("Moved game resource is a candidate, not a confirmed diagnostic target", () =>
+        {
+            var requirement = PoeRedux.Services.DiagnosticCatalog.For(GameId.PoE1, "Minimap", [])
+                .Single(x => x.ExactPath == "shaders/minimap_visibility_pixel.hlsl");
+            var result = PoeRedux.Services.DiagnosticCatalog.Search("Minimap", requirement,
+                ["shaders/new/minimap_visibility_pixel.hlsl", "shaders/not-related.hlsl", "art/other.dds"]);
+            Check(result.Matched == 0 && result.Candidates.Single() == "shaders/new/minimap_visibility_pixel.hlsl");
+            Check(result.Status.StartsWith("target_missing"));
+            Check(PoeRedux.Services.DiagnosticCatalog.Search("Minimap", requirement,
+                ["shaders/minimap_visibility_pixel.hlsl"]).Matched == 1);
+        });
+        test("Diagnostic text decoding retains raw UTF-16 BOM and refuses binary previews", () =>
+        {
+            byte[] raw = [0xff, 0xfe, .. Encoding.Unicode.GetBytes("\"rain_intensity\": 4")];
+            var (text, encoding) = PoeRedux.Services.DiagnosticCatalog.DecodeText(raw, "metadata/settings.env");
+            Check(text!.Contains("rain_intensity") && encoding == "utf-16le-bom"
+                && raw[0] == 0xff && raw[1] == 0xfe);
+            var (binary, _) = PoeRedux.Services.DiagnosticCatalog.DecodeText([0, 2, 0, 255], "assets/picture.dds");
+            Check(binary == null);
+            var missing = PoeRedux.Services.DiagnosticCatalog.EvaluateSigns(text,
+                new PoeRedux.Services.DiagnosticTarget("metadata/", ".env", ExpectedText: ["fog", "rain_intensity"]));
+            Check(missing.Contains("missing:fog") && missing.Contains("found:rain_intensity"));
+        });
+        test("Diagnostic folder and ZIP limits are explicitly bounded", () =>
+        {
+            Check(PoeRedux.Services.DiagnosticPackager.MaxSingle == 4L * 1024 * 1024);
+            Check(PoeRedux.Services.DiagnosticPackager.MaxExpanded == 64L * 1024 * 1024);
+            Check(PoeRedux.Services.DiagnosticPackager.MaxZip == 20L * 1024 * 1024);
+        });
+        test("Read-only diagnostic reader refuses invalid indexes without changing them", () =>
+        {
+            var i = externalInstall;
+            var checksum = BuildStore.HashFile(external);
+            Throws<Exception>(() => { using var reader = PoeRedux.Services.DiagnosticResourceReader.Open(external, i.Format); _ = reader.Paths; });
+            Check(BuildStore.HashFile(external) == checksum);
+        });
+        test("Diagnostic ZIP manifest hashes and unexpected entries are enforced", () =>
+        {
+            var zipPath = Path.Combine(temp, "synthetic diagnostic Кириллица.zip");
+            byte[] raw = Encoding.Unicode.GetBytes("тестовый ресурс");
+            var member = "resources/current/данные.env";
+            var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(raw));
+            using (var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                void Add(string name, byte[] bytes)
+                {
+                    using var output = zip.CreateEntry(name).Open();
+                    output.Write(bytes);
+                }
+                Add("manifest.json", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+                {
+                    SchemaVersion = 1, Part = 1, Parts = 1, Consistent = true,
+                    Files = new[] { new { ZipPath = member, Size = (long)raw.Length, Sha256 = digest } }
+                })));
+                Add("README-FOR-AI.md", "Synthetic only"u8.ToArray());
+                Add("PROMPT.txt", "Analyze synthetic resources"u8.ToArray());
+                Add("summary.txt", "Synthetic manifest"u8.ToArray());
+                Add(member, raw);
+            }
+            PoeRedux.Services.DiagnosticArchiveValidator.Validate(zipPath);
+            var samplePath = Environment.GetEnvironmentVariable("POE_DIAGNOSTIC_SAMPLE");
+            if (!string.IsNullOrWhiteSpace(samplePath))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(samplePath))!);
+                File.Copy(zipPath, samplePath, true);
+            }
+            using (var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Update))
+            {
+                using var output = zip.CreateEntry("resources/current/unlisted.bin").Open();
+                output.Write([1, 2, 3]);
+            }
+            Throws<InvalidDataException>(() => PoeRedux.Services.DiagnosticArchiveValidator.Validate(zipPath));
+        });
+        test("Diagnostic selectors match actual ColorMods and Effects roots", () =>
+        {
+            Check(DiagnosticCatalog.For(GameId.PoE2, "ColorMods2", []).Single().Matches("data/statdescriptions/test.csd"));
+            Check(!DiagnosticCatalog.For(GameId.PoE2, "ColorMods2", []).Single().Matches("metadata/test.csd"));
+            Check(DiagnosticCatalog.For(GameId.PoE1, "Effects", []).Single().Matches("metadata/effects/spells/test.aoc"));
+        });
+        test("Sequential diagnostic rules inspect preceding output without changing original bytes", () =>
+        {
+            var first = new TextRule("Rain", "2694490", "metadata/", ".env", "rain", "snow");
+            var second = first with { Pattern = "snow", Replacement = "fog" };
+            var bytes = Encoding.Unicode.GetBytes("rain");
+            var results = DiagnosticRuleProbe.Evaluate("metadata/test.env", bytes, [first, second]);
+            Check(results.Length == 2 && results.All(r => r.Matches == 1 && r.Changed == true && r.Error == null));
+            Check(Encoding.Unicode.GetString(bytes) == "rain");
+        });
+        test("Diagnostic descriptions redact Windows and Unix personal paths", () =>
+        {
+            var i = new GameInstall(GameId.PoE1, ClientKind.GGG, root, ResourceFormat.Ggpk,
+                Path.Combine(root, "Content.ggpk"), "", "v1", "v1", temp);
+            var text = DiagnosticPackager.Redact(root + "\nC:\\Users\\Private\\game\n/home/private/game", i);
+            Check(!text.Contains(root) && !text.Contains("Private") && !text.Contains("/home/private"));
+        });
+        test("Original attestation rejects bundle changes even with preserved length and timestamp", () =>
+        {
+            var location = Area("Diagnostic attestation");
+            var index = Path.Combine(location, "_.index.bin"); File.WriteAllText(index, "index");
+            var bundle = Path.Combine(location, "sample.bundle.bin"); File.WriteAllText(bundle, "before");
+            var i = new GameInstall(GameId.PoE1, ClientKind.GGG, location, ResourceFormat.ExternalBundles,
+                index, "", "v1", "v1", temp);
+            var packager = new DiagnosticPackager(Area("Diagnostic attestation data"));
+            packager.ConfirmVerified(i);
+            Check(packager.HasAttestation(i, BuildStore.HashFile(index)));
+            var timestamp = File.GetLastWriteTimeUtc(bundle);
+            File.WriteAllText(bundle, "after!"); File.SetLastWriteTimeUtc(bundle, timestamp);
+            Check(!packager.HasAttestation(i, BuildStore.HashFile(index)));
         });
         test("Pinned SDK and checksum validation do not require a game or Oodle", () =>
         {
