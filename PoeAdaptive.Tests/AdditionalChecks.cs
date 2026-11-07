@@ -211,6 +211,53 @@ static class AdditionalChecks
             Throws<IOException>(() => FileSafety.RequireSpace(temp, 1000, _ => 999));
             Throws<IOException>(() => BuildPipeline.RequireSpace(temp, 1000, _ => 0));
         });
+        test("Diagnostic catalog covers both feature sets and ordered JSON overrides", () =>
+        {
+            foreach (var game in new[] { GameId.PoE1, GameId.PoE2 })
+                foreach (var patch in PoeRedux.Services.PatchCatalog.Create(game))
+                    Check(PoeRedux.Services.DiagnosticCatalog.For(game, PoeRedux.Services.PatchCatalog.Id(patch), []).Length > 0);
+            var one = new TextRule("Rain", "2694490", "metadata/", ".env", "first", "A");
+            var two = one with { PathPrefix = "metadata/environmentsettings/", Pattern = "second" };
+            var targets = PoeRedux.Services.DiagnosticCatalog.For(GameId.PoE2, "Rain", [one, two]);
+            Check(targets.Length == 2 && targets[0].Source == "rules.json:0" && targets[1].Source == "rules.json:1");
+            Check(targets[0].Matches("metadata/foo.env") && !targets[1].Matches("metadata/foo.env"));
+        });
+        test("Moved game resource is a candidate, not a confirmed diagnostic target", () =>
+        {
+            var requirement = PoeRedux.Services.DiagnosticCatalog.For(GameId.PoE1, "Minimap", [])
+                .Single(x => x.ExactPath == "shaders/minimap_visibility_pixel.hlsl");
+            var result = PoeRedux.Services.DiagnosticCatalog.Search("Minimap", requirement,
+                ["shaders/new/minimap_visibility_pixel.hlsl", "shaders/not-related.hlsl", "art/other.dds"]);
+            Check(result.Matched == 0 && result.Candidates.Single() == "shaders/new/minimap_visibility_pixel.hlsl");
+            Check(result.Status.StartsWith("target_missing"));
+            Check(PoeRedux.Services.DiagnosticCatalog.Search("Minimap", requirement,
+                ["shaders/minimap_visibility_pixel.hlsl"]).Matched == 1);
+        });
+        test("Diagnostic text decoding retains raw UTF-16 BOM and refuses binary previews", () =>
+        {
+            var raw = new byte[] { 0xff, 0xfe, .. Encoding.Unicode.GetBytes("\"rain_intensity\": 4") };
+            var (text, encoding) = PoeRedux.Services.DiagnosticCatalog.DecodeText(raw, "metadata/settings.env");
+            Check(text!.Contains("rain_intensity") && encoding == "utf-16le-bom"
+                && raw[0] == 0xff && raw[1] == 0xfe);
+            var (binary, _) = PoeRedux.Services.DiagnosticCatalog.DecodeText([0, 2, 0, 255], "assets/picture.dds");
+            Check(binary == null);
+            var missing = PoeRedux.Services.DiagnosticCatalog.EvaluateSigns(text,
+                new PoeRedux.Services.DiagnosticTarget("metadata/", ".env", ExpectedText: ["fog", "rain_intensity"]));
+            Check(missing.Contains("missing:fog") && missing.Contains("found:rain_intensity"));
+        });
+        test("Diagnostic folder and ZIP limits are explicitly bounded", () =>
+        {
+            Check(PoeRedux.Services.DiagnosticPackager.MaxSingle == 4L * 1024 * 1024);
+            Check(PoeRedux.Services.DiagnosticPackager.MaxExpanded == 64L * 1024 * 1024);
+            Check(PoeRedux.Services.DiagnosticPackager.MaxZip == 20L * 1024 * 1024);
+        });
+        test("Read-only diagnostic reader refuses invalid indexes without changing them", () =>
+        {
+            var i = externalInstall;
+            var checksum = BuildStore.HashFile(external);
+            Throws<Exception>(() => { using var reader = PoeRedux.Services.DiagnosticResourceReader.Open(external, i.Format); _ = reader.Paths; });
+            Check(BuildStore.HashFile(external) == checksum);
+        });
         test("Pinned SDK and checksum validation do not require a game or Oodle", () =>
         {
             Check(SdkSpec.Pinned.Version == "10.0.403" && new Uri(SdkSpec.Pinned.Url).Host == "builds.dotnet.microsoft.com");
