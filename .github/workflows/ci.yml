@@ -13,6 +13,27 @@ jobs:
       - run: dotnet build PoeRedux.slnx -c Release
       - run: dotnet run --project PoeAdaptive.Tests -c Release --no-build
       - run: dotnet publish PoeRedux/PoeRedux.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+      - name: Check Windows app startup
+        shell: pwsh
+        run: |
+          $appProcess = Start-Process -FilePath (Resolve-Path 'publish/PoeAdaptive.exe') -PassThru
+          try {
+            if (-not $appProcess.WaitForInputIdle(15000)) {
+              throw 'PoeAdaptive did not initialize its window in time.'
+            }
+            Start-Sleep -Seconds 3
+            $appProcess.Refresh()
+            if ($appProcess.HasExited) {
+              throw "PoeAdaptive exited during startup: $($appProcess.ExitCode)"
+            }
+            if ($appProcess.MainWindowHandle -eq 0 -or $appProcess.MainWindowTitle -notlike 'PoE Adaptive*') {
+              throw 'The expected PoeAdaptive main window did not open.'
+            }
+            Write-Host "Opened: $($appProcess.MainWindowTitle)"
+          }
+          finally {
+            if (-not $appProcess.HasExited) { Stop-Process -Id $appProcess.Id -Force }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: PoeAdaptive-win-x64

@@ -111,7 +111,8 @@ dotnet publish PoeRedux/PoeRedux.csproj -c Release -r win-x64 --self-contained t
 `PoeAdaptive.Core` содержит Steam VDF, контрольные суммы, журнал и публикацию.
 `PoeAdaptive.Engine` компилирует правила и анализатор из папки `PoeRedux`.
 `PoeRedux` содержит WPF-интерфейс и исходные преобразования оригинала.
-В GitHub Actions настроены сборка, проверки и Windows-артефакт.
+В GitHub Actions настроены сборка, проверки, запуск главного окна Windows-приложения
+и Windows-артефакт.
 
 20 проверок используют искусственные ресурсы и временную Steam-установку:
 смена сборки, исходные копии, атомарная запись, восстановление журнала,
