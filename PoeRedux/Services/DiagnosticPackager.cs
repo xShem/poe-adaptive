@@ -377,7 +377,7 @@ public sealed class DiagnosticPackager(string dataRoot)
         // Keep raw data below 15 MiB per part (compressed <= 20 MiB); never exceed 64 MiB across all files.
         var sorted = resources.OrderByDescending(x => x.Path.StartsWith("resources/current/", StringComparison.Ordinal))
             .ThenBy(x => x.Path, StringComparer.Ordinal).ToArray();
-        var parts = new List<List<FileItem>> { [] };
+        var parts = new List<List<FileItem>> { new List<FileItem>() };
         long expanded = 0;
         foreach (var item in sorted)
         {
