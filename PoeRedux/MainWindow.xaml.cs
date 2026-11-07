@@ -177,11 +177,34 @@ public partial class MainWindow : Window
             var profile = CaptureProfile();
             var required = ResourceAdapters.EstimateAdditionalSpace(install);
             StatusText.Text = $"Подготовка ресурсов. Резерв места: {required / 1073741824.0:F1} ГиБ. GGPK обрабатывается на отдельной копии.";
-            prepared = await Task.Run(() => patcher.Analyze(install, profile,
-                message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
-            ShowResults(prepared);
-            StatusText.Text = prepared.CanApply ? "План готов. Проверьте результат и примените изменения."
-                : "Снимите выбор функций без изменений и повторите анализ.";
+            Exception? analysisError = null;
+            try
+            {
+                prepared = await Task.Run(() => patcher.Analyze(install, profile,
+                    message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
+                ShowResults(prepared);
+            }
+            catch (Exception ex) { analysisError = ex; }
+            if (analysisError is not null || prepared is { CanApply: false })
+            {
+                try
+                {
+                    var report = await Task.Run(() => new DiagnosticPackager(AdaptivePatcher.DataRoot).Export(
+                        new DiagnosticOptions(install, profile.Patches, Actual: analysisError?.Message), prepared,
+                        message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
+                    diagnosticResult = report;
+                    OpenDiagnosticButton.IsEnabled = true;
+                    CopyDiagnosticButton.IsEnabled = true;
+                    StatusText.Text = $"Проблемный анализ: диагностический ZIP готов ({report.ZipPaths.Length} частей). " +
+                        (analysisError?.Message ?? "Найден нулевой результат.");
+                }
+                catch (Exception diagnosticError)
+                {
+                    StatusText.Text = "Диагностика недоступна: " + diagnosticError.Message;
+                    if (analysisError is not null) throw analysisError;
+                }
+            }
+            else StatusText.Text = "План готов. Проверьте результат и примените изменения.";
         });
     }
     private async void Apply_Click(object sender, RoutedEventArgs e)
