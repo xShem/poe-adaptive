@@ -429,7 +429,25 @@ public sealed class DiagnosticPackager(string dataRoot)
         if (VersionTracker.Hint(i) != hint || BuildStore.HashFile(i.ResourcePath) != indexHash)
             throw new IOException("Версия ресурсов изменилась во время диагностики. Пакет не опубликован.");
         FileSafety.RequireIdle(i, false);
-        var results = prepared?.Report.Results.ToArray() ?? [];
+        PatchResult[] results = prepared?.Report.Results.ToArray() ?? [];
+        object? parameters = prepared?.Profile;
+        if (prepared is null)
+        {
+            try
+            {
+                parameters = new AdaptivePatcher(dataRoot).LoadProfile(i);
+                var reportPath = Path.Combine(dataRoot, "Reports", i.Key + "-latest.json");
+                if (File.Exists(reportPath))
+                {
+                    var report = JsonSerializer.Deserialize<AnalysisReport>(File.ReadAllText(reportPath));
+                    if (report?.BuildId == i.BuildId && report.BeforeHash == indexHash)
+                        results = report.Results.Where(x => selected.Contains(x.Id)).ToArray();
+                    else warnings.Add("No matching analysis report for selected resource version.");
+                }
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException)
+            { warnings.Add("Saved profile/report not usable: " + ex.GetType().Name); }
+        }
         var prompt = $"Репозиторий: https://github.com/xShem/poe-adaptive\nПриложение: PoE Adaptive 0.3.0; {i.Game}, {i.Client}\n" +
             $"Проблемные функции: {string.Join(", ", selected)}\nОжидалось: {options.Expected ?? "(не указано)"}\nФактически: {options.Actual ?? "(не указано)"}\n" +
             "Изучи manifest.json, README-FOR-AI.md, исходные ресурсы в resources/, сравнения в diff/ и отчёты поиска. " +
@@ -479,7 +497,7 @@ public sealed class DiagnosticPackager(string dataRoot)
                             SourceCommit, "2.7.5",
                             i.Game.ToString(), i.Client.ToString(), i.Format.ToString(), i.Key, i.BuildId,
                             previous.FirstOrDefault()?.Meta.ResourceVersion, rulesHash, selected,
-                            prepared?.Profile, rules.Where(r => r.TargetGame == i.Game && selected.Contains(r.PatchId)).ToArray(),
+                            parameters, rules.Where(r => r.TargetGame == i.Game && selected.Contains(r.PatchId)).ToArray(),
                             checks.ToArray(), group.Select(g => g.Meta).ToArray(), omissions.ToArray(), warnings.ToArray(),
                             results, DateTimeOffset.UtcNow, true, evidence);
                         Write(zip, "manifest.json", JsonBytes(manifest));
