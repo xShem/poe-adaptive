@@ -227,13 +227,17 @@ public sealed class DiagnosticPackager(string dataRoot)
             if (index is null || index.SchemaVersion != 1 || index.Installation != i.Key ||
                 index.Version == i.BuildId || version is not null && version != index.Version) continue;
             if (index.RulesHash != ruleHash) omissions.Add("Previous baseline has different rules; comparison is informational only.");
+            long priorBytes = 0;
             foreach (var record in index.Records.Take(MaxFiles))
             {
                 var source = Path.Combine(candidate, record.Sha256 + ".bin");
                 if (!File.Exists(source)) { omissions.Add("Cached file missing: " + record.InternalPath); continue; }
+                if (record.Size < 0 || record.Size > MaxSingle || priorBytes + record.Size > MaxExpanded / 2)
+                { omissions.Add("Previous file omitted by size budget: " + record.InternalPath); continue; }
                 var bytes = File.ReadAllBytes(source);
                 if (Hash(bytes) != record.Sha256 || bytes.Length != record.Size) { omissions.Add("Cached resource failed integrity check: " + record.InternalPath); continue; }
                 var member = "resources/previous/" + HashText(record.InternalPath)[..12] + "-" + SafeMember(record.InternalPath);
+                priorBytes += bytes.Length;
                 items.Add(new(member, bytes, new(record.InternalPath, member,
                     record.Evidence.StartsWith("User confirmed", StringComparison.Ordinal) ? "previous-original-verified" : "previous-source-unverified",
                     record.Version, bytes.Length, record.Sha256, "bounded diagnostic cache", i.BuildId, record.Evidence)));
@@ -290,6 +294,7 @@ public sealed class DiagnosticPackager(string dataRoot)
             var paths = reader.Paths;
             var readSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             int inspected = 0;
+            long currentBytes = 0;
             foreach (var (feature, target) in expectedTargets)
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -304,10 +309,12 @@ public sealed class DiagnosticPackager(string dataRoot)
                     if (!readSet.Add(path)) continue;
                     inspected++;
                     var size = reader.SizeOf(path);
-                    if (size < 0 || size > MaxSingle) { omissions.Add("Resource skipped (per-file limit): " + path); continue; }
+                    if (size < 0 || size > MaxSingle || currentBytes + size > MaxExpanded / 2)
+                    { omissions.Add("Resource skipped (per-file or 32 MiB current budget): " + path); continue; }
                     try
                     {
                         if (!reader.TryRead(path, MaxSingle, out var bytes) || bytes is null) { omissions.Add("Cannot read: " + path); continue; }
+                        currentBytes += bytes.Length;
                         var (content, encoding) = DiagnosticCatalog.DecodeText(bytes, path);
                         var relevant = expectedTargets.Where(t => t.Target.Matches(path)).ToArray();
                         foreach (var other in relevant)
