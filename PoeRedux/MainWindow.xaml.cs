@@ -190,7 +190,7 @@ public partial class MainWindow : Window
                 try
                 {
                     var report = await Task.Run(() => new DiagnosticPackager(AdaptivePatcher.DataRoot).Export(
-                        new DiagnosticOptions(install, profile.Patches, Actual: analysisError?.Message), prepared,
+                        new DiagnosticOptions(install, profile.Patches, Actual: analysisError?.GetType().Name), prepared,
                         message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
                     diagnosticResult = report;
                     OpenDiagnosticButton.IsEnabled = true;
