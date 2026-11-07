@@ -252,7 +252,7 @@ public partial class MainWindow : Window
         try
         {
             var packager = new DiagnosticPackager(AdaptivePatcher.DataRoot);
-            diagnosticResult = await Task.Run(() => packager.Export(options, null,
+            diagnosticResult = await Task.Run(() => packager.Export(options, prepared,
                 message => Dispatcher.BeginInvoke(() => StatusText.Text = message), cancellation), cancellation);
             OpenDiagnosticButton.IsEnabled = true;
             CopyDiagnosticButton.IsEnabled = true;
