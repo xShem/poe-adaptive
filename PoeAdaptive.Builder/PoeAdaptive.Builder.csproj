@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>PoeAdaptive.Builder</AssemblyName><Version>0.2.0</Version></PropertyGroup>
+  <PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>PoeAdaptive.Builder</AssemblyName><Version>0.3.0</Version></PropertyGroup>
   <ItemGroup><ProjectReference Include="../PoeAdaptive.Build.Core/PoeAdaptive.Build.Core.csproj" /></ItemGroup>
 </Project>
