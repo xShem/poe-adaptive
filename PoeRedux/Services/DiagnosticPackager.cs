@@ -372,7 +372,59 @@ public sealed class DiagnosticPackager(string dataRoot)
         }
         resources.AddRange(previous);
         resources.AddRange(textDiffs);
-        if (prepared != null) warnings.Add("A prepared plan was supplied, but patched asset examples are omitted unless independently mapped and proven; game files were not altered.");
+        if (prepared is not null)
+        {
+            if (prepared.Install.Key != i.Key || prepared.Report.BeforeHash != indexHash
+                || prepared.ResourceHint != hint || prepared.RulesHash != rulesHash)
+                warnings.Add("Prepared plan does not match the installation, rules or resource fingerprint; omitted.");
+            else
+            {
+                // Read the already isolated plan. Never execute a patch or write to a game container.
+                try
+                {
+                    progress?.Invoke("Чтение ограниченных примеров уже подготовленного плана…");
+                    var fallback = i.Format == ResourceFormat.ExternalBundles ? Path.GetDirectoryName(i.ResourcePath) : null;
+                    using var resultReader = DiagnosticResourceReader.Open(prepared.IndexPath, i.Format, fallback);
+                    var previousCurrent = resources.Where(r => r.Path.StartsWith("resources/current/", StringComparison.Ordinal))
+                        .Take(32).ToArray();
+                    var samplesDone = 0;
+                    foreach (var sourceFile in previousCurrent)
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        if (samplesDone >= 12) break;
+                        var gamePath = sourceFile.Meta.GamePath;
+                        if (!resultReader.TryRead(gamePath, MaxSingle, out var newBytes) ||
+                            newBytes is null || newBytes.AsSpan().SequenceEqual(sourceFile.Bytes)) continue;
+                        var member = "resources/prepared/" + HashText(gamePath)[..12] + "-" + SafeMember(gamePath);
+                        resources.Add(new(member, newBytes, new(gamePath, member, "prepared-transformation",
+                            i.BuildId, newBytes.Length, Hash(newBytes), "read-only isolated analysis plan",
+                            i.BuildId, "Not installed; verified against same installation and input fingerprint.")));
+                        var (oldText, _) = DiagnosticCatalog.DecodeText(sourceFile.Bytes, gamePath);
+                        var (newText, _) = DiagnosticCatalog.DecodeText(newBytes, gamePath);
+                        if (oldText is not null && newText is not null)
+                        {
+                            var diffText = "Source SHA-256: " + sourceFile.Meta.Sha256 + "\nPrepared SHA-256: " +
+                                Hash(newBytes) + "\n--- installed\n+++ prepared\n" +
+                                string.Join("\n", oldText.Split('\n').Take(80).Select(v => "- " + v)) + "\n" +
+                                string.Join("\n", newText.Split('\n').Take(80).Select(v => "+ " + v)) +
+                                "\nBounded excerpts, not a minimal unified diff.\n";
+                            var diffBytes = Utf8(diffText);
+                            var diffMember = "diff/prepared-" + HashText(gamePath)[..12] + ".txt";
+                            if (diffBytes.Length <= MaxSingle)
+                                resources.Add(new(diffMember, diffBytes, new(gamePath, diffMember, "derived-prepared-diff",
+                                    i.BuildId, diffBytes.Length, Hash(diffBytes), "source-vs-plan excerpt",
+                                    i.BuildId, "Not installed.")));
+                        }
+                        samplesDone++;
+                    }
+                    if (samplesDone == 0) warnings.Add("Prepared plan has no bounded changed examples among sampled sources.");
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException)
+                {
+                    warnings.Add("Prepared examples unavailable: " + ex.GetType().Name);
+                }
+            }
+        }
         if (options.Automatic) warnings.Add("Automatic capture was requested on observed update; installation identity must still be confirmed.");
         if (VersionTracker.Hint(i) != hint || BuildStore.HashFile(i.ResourcePath) != indexHash)
             throw new IOException("Версия ресурсов изменилась во время диагностики. Пакет не опубликован.");
