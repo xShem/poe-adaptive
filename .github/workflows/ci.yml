@@ -16,6 +16,18 @@ jobs:
       - name: Build, run checks and package with the shared pipeline
         shell: pwsh
         run: ./Build.ps1 -Output "$PWD/artifacts/Первичная сборка"
+      - name: Check synthetic diagnostic ZIP from the console runner
+        shell: pwsh
+        run: |
+          $result = Get-ChildItem 'artifacts/Первичная сборка' -Directory | Select-Object -First 1
+          $sample = Join-Path $result.FullName 'diagnostic-synthetic.zip'
+          if (-not (Test-Path $sample)) { throw 'Diagnostic sample missing' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($sample)
+          try {
+            if ($zip.Entries.FullName -notcontains 'manifest.json' -or $zip.Entries.FullName -notcontains 'README-FOR-AI.md') { throw 'Diagnostic metadata missing' }
+            if ($zip.Entries.FullName -match '\.(ggpk|exe|dll)$|\.bundle\.bin$|\.index\.bin$') { throw 'Prohibited content' }
+          } finally { $zip.Dispose() }
       - name: Check both Windows main windows
         shell: pwsh
         run: |

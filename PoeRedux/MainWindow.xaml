@@ -82,9 +82,9 @@
             <StackPanel>
                 <TextBlock Text="Отметьте проблемные функции выше. Если ничего не выбрано, диагностируются все функции игры."
                            Foreground="{StaticResource DarkTextSecondary}" FontSize="11"/>
-                <TextBox x:Name="ExpectedText" MinHeight="24" Margin="0,4,0,2" ToolTip="Ожидаемый результат"
+                <TextBox x:Name="ExpectedText" MaxLength="4000" MinHeight="24" Margin="0,4,0,2" ToolTip="Ожидаемый результат"
                          Text=""/>
-                <TextBox x:Name="ActualText" MinHeight="24" Margin="0,2,0,4" ToolTip="Фактический результат"
+                <TextBox x:Name="ActualText" MaxLength="4000" MinHeight="24" Margin="0,2,0,4" ToolTip="Фактический результат"
                          Text=""/>
                 <StackPanel Orientation="Horizontal">
                     <Button Content="Собрать диагностику" Click="Diagnostic_Click" Style="{StaticResource SecondaryButton}"/>

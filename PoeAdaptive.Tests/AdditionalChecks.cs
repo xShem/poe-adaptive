@@ -1,3 +1,4 @@
+using PoeRedux.Services;
 using System.Text;
 using System.Text.Json;
 using LibGGPK3;
@@ -282,6 +283,12 @@ static class AdditionalChecks
                 Add(member, raw);
             }
             PoeRedux.Services.DiagnosticArchiveValidator.Validate(zipPath);
+            var samplePath = Environment.GetEnvironmentVariable("POE_DIAGNOSTIC_SAMPLE");
+            if (!string.IsNullOrWhiteSpace(samplePath))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(samplePath))!);
+                File.Copy(zipPath, samplePath, true);
+            }
             using (var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Update))
             {
                 using var output = zip.CreateEntry("resources/current/unlisted.bin").Open();

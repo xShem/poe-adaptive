@@ -205,16 +205,16 @@ public static class BuildPipeline
             var restoreArgs = new List<string> { "restore", "PoeRedux.slnx", "--locked-mode" };
             if (options.Offline) { var empty = Path.Combine(job, "offline-feed"); Directory.CreateDirectory(empty); restoreArgs.AddRange(["--source", empty]); }
             log("Восстановление зависимостей."); await Processes.Run(dotnet, restoreArgs, snapshot, log, token);
-            log("Сборка всех проектов."); await Processes.Run(dotnet, ["build", "PoeRedux.slnx", "-c", "Release", "--no-restore"], snapshot, log, token);
+            log("Сборка всех проектов."); await Processes.Run(dotnet, ["build", "PoeRedux.slnx", "-c", "Release", "--no-restore", "-p:SourceRevisionId=" + (commit ?? sourceId)], snapshot, log, token);
             log("Выполнение консольных проверок.");
-            var checks = await Processes.Run(dotnet, ["run", "--project", "PoeAdaptive.Tests", "-c", "Release", "--no-build", "--no-restore"], snapshot, log, token);
+            var checks = await Processes.Run(dotnet, ["run", "--project", "PoeAdaptive.Tests", "-c", "Release", "--no-build", "--no-restore", "--", "--diagnostic-sample", Path.Combine(job, "diagnostic-synthetic.zip")], snapshot, log, token);
             if (!checks.Contains("checks passed.", StringComparison.Ordinal)) throw new IOException("Раннер не подтвердил выполнение проверок.");
             var stage = Path.Combine(job, "packages"); Directory.CreateDirectory(stage);
             var app = Path.Combine(stage, "app"); var builder = Path.Combine(stage, "builder");
             foreach (var (project, folder) in new[] { ("PoeRedux/PoeRedux.csproj", app), ("PoeAdaptive.Diagnostics/PoeAdaptive.Diagnostics.csproj", app), ("PoeAdaptive.Builder/PoeAdaptive.Builder.csproj", builder) })
             {
                 log("Публикация " + project);
-                await Processes.Run(dotnet, ["publish", project, "-c", "Release", "-r", "win-x64", "--self-contained", "true", "--no-restore", "-p:PublishSingleFile=true", "-p:IncludeNativeLibrariesForSelfExtract=true", "-o", folder], snapshot, log, token);
+                await Processes.Run(dotnet, ["publish", project, "-c", "Release", "-r", "win-x64", "--self-contained", "true", "--no-restore", "-p:PublishSingleFile=true", "-p:IncludeNativeLibrariesForSelfExtract=true", "-p:SourceRevisionId=" + (commit ?? sourceId), "-o", folder], snapshot, log, token);
             }
             var info = new { schemaVersion = 1, version, sdk = SdkSpec.Pinned.Version, target = "win-x64", selfContained = true, sourceCommit = commit, localChanges = dirty, sourceId, gameClientValidation = false, oodleIncluded = false };
             var metadata = JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true });
@@ -237,8 +237,10 @@ public static class BuildPipeline
             var builderZip = Path.Combine(stage, $"PoeAdaptive-Builder-{version}-win-x64.zip");
             token.ThrowIfCancellationRequested();
             ZipFile.CreateFromDirectory(app, appZip); ZipFile.CreateFromDirectory(builder, builderZip);
+            var sampleZip = Path.Combine(stage, "diagnostic-synthetic.zip");
+            File.Copy(Path.Combine(job, "diagnostic-synthetic.zip"), sampleZip);
             var sums = new List<string>();
-            foreach (var file in new[] { appZip, builderZip, sourceZip }) { await using var input = File.OpenRead(file); sums.Add(Convert.ToHexString(await SHA256.HashDataAsync(input, token)).ToLowerInvariant() + "  " + Path.GetFileName(file)); }
+            foreach (var file in new[] { appZip, builderZip, sourceZip, sampleZip }) { await using var input = File.OpenRead(file); sums.Add(Convert.ToHexString(await SHA256.HashDataAsync(input, token)).ToLowerInvariant() + "  " + Path.GetFileName(file)); }
             File.WriteAllLines(Path.Combine(stage, "SHA256SUMS.txt"), sums);
             File.WriteAllText(Path.Combine(stage, "build-info.json"), metadata);
             token.ThrowIfCancellationRequested();

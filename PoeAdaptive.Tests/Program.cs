@@ -15,6 +15,12 @@ if (args.Contains("--wait-child"))
     Console.WriteLine("LEAF_PID=" + leaf.Id);
     await Task.Delay(60000); return;
 }
+var sampleArgument = Array.IndexOf(args, "--diagnostic-sample");
+if (sampleArgument >= 0)
+{
+    if (sampleArgument + 1 >= args.Length) throw new ArgumentException("Missing diagnostic sample path.");
+    Environment.SetEnvironmentVariable("POE_DIAGNOSTIC_SAMPLE", Path.GetFullPath(args[sampleArgument + 1]));
+}
 int passed = 0;
 void Check(bool condition, string message = "Assertion failed")
 { if (!condition) throw new Exception(message); }

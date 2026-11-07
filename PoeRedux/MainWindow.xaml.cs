@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private readonly HashSet<string> diagnosedBuilds = [];
     private CancellationTokenSource? diagnosticCancellation;
     private DiagnosticExport? diagnosticResult;
+    private bool diagnosticRunning;
     private List<GameInstall> installs = [];
     private GameInstall? selected;
     private PreparedPatch? prepared;
@@ -33,6 +34,12 @@ public partial class MainWindow : Window
         PatchesItemsControl.ItemsSource = patches;
         Loaded += (_, _) => { FindGames(); timer.Start(); };
         timer.Tick += async (_, _) => await PollUpdates();
+        Closing += (_, e) =>
+        {
+            if (!diagnosticRunning) return;
+            diagnosticCancellation?.Cancel(); e.Cancel = true;
+            StatusText.Text = "Отмена диагностики… Дождитесь завершения чтения, затем закройте окно.";
+        };
         Closed += (_, _) => { timer.Stop(); diagnosticCancellation?.Cancel(); prepared?.Dispose(); };
     }
 
@@ -267,6 +274,9 @@ public partial class MainWindow : Window
         diagnosticCancellation = new CancellationTokenSource();
         var cancellation = diagnosticCancellation.Token;
         busy = true;
+        diagnosticRunning = true;
+        foreach (UIElement child in MainGrid.Children)
+            if (System.Windows.Controls.Grid.GetRow(child) != 4) child.IsEnabled = false;
         CancelDiagnosticButton.IsEnabled = true;
         OpenDiagnosticButton.IsEnabled = false;
         CopyDiagnosticButton.IsEnabled = false;
@@ -285,7 +295,9 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
         finally
         {
+            diagnosticRunning = false;
             busy = false;
+            foreach (UIElement child in MainGrid.Children) child.IsEnabled = true;
             CancelDiagnosticButton.IsEnabled = false;
             Progress.Visibility = Visibility.Collapsed;
         }
