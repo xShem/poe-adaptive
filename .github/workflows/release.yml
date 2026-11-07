@@ -9,7 +9,7 @@ on:
       tag:
         description: Version tag matching the application version
         required: true
-        default: v0.2.0
+        default: v0.3.0
         type: string
 permissions:
   contents: read
@@ -81,7 +81,7 @@ jobs:
                   if any(path.lower().endswith('.dll') and 'oo2core' in path.lower() for path in z.namelist()): raise SystemExit('Oodle redistribution prohibited')
           shutil.copytree(staged, 'release')
           pathlib.Path('release/notes.md').write_text(
-              f'PoE Adaptive {version}: адаптеры Steam, GGG и Epic; отдельный Builder для Windows 11 x64.\n\n'
+              f'PoE Adaptive {version}: ограниченные диагностические ZIP, адаптеры Steam/GGG/Epic и Builder для Windows 11 x64.\n\n'
               '.NET Runtime включён в оба приложения. Oodle DLL требуется отдельно из локальной установки. '
               'Исходники, документация и SHA-256 приложены. Матрица различает синтетические проверки и проверку настоящих клиентов; '
               'совместимость правил с текущими играми ещё не подтверждена.\n\n'
