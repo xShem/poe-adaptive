@@ -111,6 +111,26 @@ public sealed class DiagnosticPackager(string dataRoot)
     private static string HashText(string text) => Hash(Encoding.UTF8.GetBytes(text));
     private string CachePath(GameInstall i, string ruleHash) =>
         Path.Combine(CacheRoot, i.Key, HashText(i.BuildId + "|" + ruleHash)[..24]);
+    private sealed record VerifiedStamp(string Installation, string Version, string ResourceSha256, DateTimeOffset ConfirmedAt);
+    private string VerifiedPath(GameInstall i) => Path.Combine(CacheRoot, i.Key, "verified-" + HashText(i.BuildId)[..16] + ".json");
+    /// <summary>Records explicit user attestation after official client file verification.</summary>
+    public void ConfirmVerified(GameInstall i)
+    {
+        FileSafety.RequireIdle(i, false);
+        BuildStore.SaveJson(VerifiedPath(i), new VerifiedStamp(i.Key, i.BuildId,
+            BuildStore.HashFile(i.ResourcePath), DateTimeOffset.UtcNow));
+    }
+    private bool HasAttestation(GameInstall i, string hash)
+    {
+        var path = VerifiedPath(i);
+        if (!File.Exists(path)) return false;
+        try
+        {
+            var stamp = JsonSerializer.Deserialize<VerifiedStamp>(File.ReadAllText(path));
+            return stamp?.Installation == i.Key && stamp.Version == i.BuildId && stamp.ResourceSha256 == hash;
+        }
+        catch (JsonException) { return false; }
+    }
     private sealed record CachedRecord(string InternalPath, string Sha256, long Size, string Version,
         string RulesHash, string Installation, string Evidence);
     private sealed record CachedIndex(int SchemaVersion, string Version, string RulesHash, string Installation,
@@ -153,6 +173,7 @@ public sealed class DiagnosticPackager(string dataRoot)
         var found = paths.Where(p => targetSet.Any(t => t.Matches(p))).ToArray();
         var take = found.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).Take(MaxFiles).ToArray();
         var records = new List<CachedRecord>();
+        var attested = HasAttestation(i, BuildStore.HashFile(baseline));
         var pending = Path.Combine(CacheRoot, i.Key, ".capture-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(pending);
         long bytesTotal = 0;
@@ -167,7 +188,7 @@ public sealed class DiagnosticPackager(string dataRoot)
                 var hash = Hash(bytes);
                 File.WriteAllBytes(Path.Combine(pending, hash + ".bin"), bytes);
                 records.Add(new(path, hash, bytes.Length, i.BuildId, ruleHash, i.Key,
-                    "Validated pre-apply baseline (not proof of official file verification)"));
+                    attested ? "User confirmed official verification; bytes match pre-apply baseline." : "Pre-apply baseline; no independent official verification."));
                 bytesTotal += bytes.Length;
             }
             if (records.Count == 0) return;
@@ -209,7 +230,8 @@ public sealed class DiagnosticPackager(string dataRoot)
                 var bytes = File.ReadAllBytes(source);
                 if (Hash(bytes) != record.Sha256 || bytes.Length != record.Size) { omissions.Add("Cached resource failed integrity check: " + record.InternalPath); continue; }
                 var member = "resources/previous/" + HashText(record.InternalPath)[..12] + "-" + SafeMember(record.InternalPath);
-                items.Add(new(member, bytes, new(record.InternalPath, member, "previous-original-baseline",
+                items.Add(new(member, bytes, new(record.InternalPath, member,
+                    record.Evidence.StartsWith("User confirmed", StringComparison.Ordinal) ? "previous-original-verified" : "previous-source-unverified",
                     record.Version, bytes.Length, record.Sha256, "bounded diagnostic cache", i.BuildId, record.Evidence)));
             }
             return items;
@@ -238,10 +260,13 @@ public sealed class DiagnosticPackager(string dataRoot)
         var state = store.Load();
         if (File.Exists(Path.Combine(store.DirectoryPath, "pending.json")))
             throw new IOException("Есть журнал незавершённой записи. Экспорт остановлен до восстановления состояния.");
-        var identity = IsVerifiedOriginal(i, state, indexHash) ? "current-original-baseline" :
+        var attested = HasAttestation(i, indexHash);
+        var identity = attested ? "current-original-verified" :
+            IsVerifiedOriginal(i, state, indexHash) ? "current-baseline-unverified" :
             state is not null && state.CurrentHash == indexHash && state.OriginalHash != indexHash ? "current-poeadaptive-modified" :
             "unknown-origin";
-        var evidence = identity == "current-original-baseline"
+        var evidence = attested ? "User explicitly confirmed official verification; exact file SHA-256 matched." :
+            identity == "current-baseline-unverified"
             ? "Validated BuildStore baseline; independent official verification is not established."
             : identity == "current-poeadaptive-modified" ? "Current bytes match a recorded PoE Adaptive publish."
             : "No matching, validated source/build state; do not treat as original.";
@@ -381,7 +406,7 @@ public sealed class DiagnosticPackager(string dataRoot)
                     {
                         var group = parts[part];
                         var manifest = new DiagnosticManifest(1, packageId, part + 1, parts.Count, "0.2.0",
-                            "81d7d82aa21a48d0cac7c3ec9b7ab1cfcebf886c+diagnostics", "2.7.5",
+                            "not embedded; compare source archive and CI build-info.json", "2.7.5",
                             i.Game.ToString(), i.Client.ToString(), i.Format.ToString(), i.Key, i.BuildId,
                             previous.FirstOrDefault()?.Meta.ResourceVersion, rulesHash, selected,
                             prepared?.Profile, rules.Where(r => r.TargetGame == i.Game && selected.Contains(r.PatchId)).ToArray(),
