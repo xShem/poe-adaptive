@@ -35,8 +35,9 @@ public sealed class ExternalResourceAdapter : IResourceAdapter
     {
         ResourceProbe.Inspect(prepared);
         using var input = File.OpenRead(prepared);
-        using var index = new LibBundle3.Index(input, true, true);
+        using var index = new LibBundle3.Index(input, true, true, new IsolatedFactory(Path.GetDirectoryName(prepared)!, Path.GetDirectoryName(prepared)!));
         if (index.Files.Count == 0) throw new InvalidDataException("Пустой индекс.");
+        foreach (var file in index.Files.Values.Where(f => f.BundleRecord.Path.StartsWith("PoeAdaptive/", StringComparison.Ordinal))) file.Read();
     }
 }
 

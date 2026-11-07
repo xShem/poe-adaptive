@@ -203,6 +203,22 @@ static class AdditionalChecks
             var file = Path.Combine(temp, "sdk.zip"); File.WriteAllText(file, "not Microsoft SDK");
             Throws<InvalidDataException>(() => SdkManager.VerifyDownload(file, new string('0', 128), CancellationToken.None).GetAwaiter().GetResult());
         });
+        test("SDK extraction accepts root entries and rejects archive traversal", () =>
+        {
+            var zip = Path.Combine(temp, "sdk-structure.zip");
+            using (var archive = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                archive.CreateEntry("./");
+                using var writer = new StreamWriter(archive.CreateEntry("sdk/version.txt").Open()); writer.Write("synthetic SDK layout");
+            }
+            var destination = Path.Combine(temp, "SDK cache", "mixed path");
+            SdkManager.ExtractArchive(zip, destination.Replace('\\', '/'), CancellationToken.None);
+            Check(File.ReadAllText(Path.Combine(destination, "sdk", "version.txt")) == "synthetic SDK layout");
+            var bad = Path.Combine(temp, "unsafe-sdk.zip");
+            using (var archive = System.IO.Compression.ZipFile.Open(bad, System.IO.Compression.ZipArchiveMode.Create)) archive.CreateEntry("../outside.txt");
+            Throws<InvalidDataException>(() => SdkManager.ExtractArchive(bad, destination, CancellationToken.None));
+            Check(!File.Exists(Path.Combine(temp, "SDK cache", "outside.txt")));
+        });
         test("Build process reports failure and handles Cyrillic and spaces safely", () =>
         {
             var dotnet = DotnetHost;

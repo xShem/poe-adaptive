@@ -19,7 +19,7 @@
         </DockPanel>
         <StackPanel Grid.Row="1" Margin="0,0,0,12">
             <DockPanel Margin="0,0,0,8">
-                <Button DockPanel.Dock="Right" Content="Найти игры" Click="FindSteam_Click" Padding="12,6"/>
+                <Button DockPanel.Dock="Right" Content="Найти игры" Click="FindGames_Click" Padding="12,6"/>
                 <Button DockPanel.Dock="Right" Content="Файл…" Click="Browse_Click" Padding="12,6"/>
                 <Button DockPanel.Dock="Right" Content="Каталог…" Click="BrowseFolder_Click" Padding="12,6"/>
                 <ComboBox x:Name="GameSelector" DisplayMemberPath="Title" SelectionChanged="GameSelector_SelectionChanged"

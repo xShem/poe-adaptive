@@ -70,6 +70,21 @@ public static class SdkManager
         var actual = Convert.ToHexString(await SHA512.HashDataAsync(stream, token));
         if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("SHA-512 SDK не совпадает с закреплённым значением Microsoft. Загрузка не будет использована.");
     }
+    public static void ExtractArchive(string zip, string destination, CancellationToken token)
+    {
+        var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar);
+        Directory.CreateDirectory(root);
+        using var archive = ZipFile.OpenRead(zip);
+        foreach (var entry in archive.Entries)
+        {
+            token.ThrowIfCancellationRequested();
+            var path = Path.GetFullPath(Path.Combine(root, entry.FullName.Replace('\\', '/')));
+            if (entry.Name.Length == 0 && path.TrimEnd(Path.DirectorySeparatorChar).Equals(root, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Недопустимый путь SDK.");
+            if (entry.Name.Length == 0) Directory.CreateDirectory(path);
+            else { Directory.CreateDirectory(Path.GetDirectoryName(path)!); entry.ExtractToFile(path); }
+        }
+    }
     public static async Task<string> Bootstrap(string cache, bool offline, Action<string>? log, CancellationToken token)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Автоматическая установка SDK предназначена для Windows x64.");
@@ -101,7 +116,7 @@ public static class SdkManager
         try
         {
             Directory.CreateDirectory(temp); token.ThrowIfCancellationRequested();
-            await Task.Run(() => { using var archive = ZipFile.OpenRead(zip); foreach (var entry in archive.Entries) { token.ThrowIfCancellationRequested(); var path = Path.GetFullPath(Path.Combine(temp, entry.FullName)); if (!path.StartsWith(temp + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Недопустимый путь SDK."); if (entry.Name.Length == 0) Directory.CreateDirectory(path); else { Directory.CreateDirectory(Path.GetDirectoryName(path)!); entry.ExtractToFile(path); } } }, token);
+            await Task.Run(() => ExtractArchive(zip, temp, token), token);
             var version = await Processes.Run(Path.Combine(temp, "dotnet.exe"), ["--version"], temp, log, token);
             if (version != spec.Version) throw new InvalidDataException("Неподходящая версия SDK.");
             Directory.Move(temp, Path.Combine(cache, spec.Version));
@@ -166,7 +181,10 @@ public static class BuildPipeline
             try
             {
                 commit = await Processes.Run("git", ["rev-parse", "HEAD"], source, null, token);
-                dirty = (await Processes.Run("git", ["status", "--porcelain", "--untracked-files=normal"], source, null, token)).Length != 0;
+                var statusArgs = new List<string> { "status", "--porcelain", "--untracked-files=normal" };
+                var relativeOutput = Path.GetRelativePath(source, output);
+                if (!relativeOutput.StartsWith("..", StringComparison.Ordinal)) statusArgs.AddRange(["--", ".", ":(exclude)" + relativeOutput.Replace('\\', '/')]);
+                dirty = (await Processes.Run("git", statusArgs, source, null, token)).Length != 0;
             }
             catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception) { log("Git недоступен; идентификатор исходников будет вычислен по файлам."); }
             log("Создание отдельного снимка исходников.");

@@ -28,7 +28,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         PatchesItemsControl.ItemsSource = patches;
-        Loaded += (_, _) => { FindSteam(); timer.Start(); };
+        Loaded += (_, _) => { FindGames(); timer.Start(); };
         timer.Tick += async (_, _) => await PollUpdates();
         Closed += (_, _) => { timer.Stop(); prepared?.Dispose(); };
     }
@@ -41,7 +41,7 @@ public partial class MainWindow : Window
         if (ResultsList != null) ResultsList.ItemsSource = null;
     }
 
-    private void FindSteam()
+    private void FindGames()
     {
         try
         {
@@ -54,7 +54,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { ShowError(ex); }
     }
-    private void FindSteam_Click(object sender, RoutedEventArgs e) => FindSteam();
+    private void FindGames_Click(object sender, RoutedEventArgs e) => FindGames();
 
     private void Browse_Click(object sender, RoutedEventArgs e)
     {
