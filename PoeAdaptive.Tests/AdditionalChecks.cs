@@ -289,6 +289,28 @@ static class AdditionalChecks
             }
             Throws<InvalidDataException>(() => PoeRedux.Services.DiagnosticArchiveValidator.Validate(zipPath));
         });
+        test("Diagnostic selectors match actual ColorMods and Effects roots", () =>
+        {
+            Check(DiagnosticCatalog.For(GameId.PoE2, "ColorMods2", []).Single().Matches("data/statdescriptions/test.csd"));
+            Check(!DiagnosticCatalog.For(GameId.PoE2, "ColorMods2", []).Single().Matches("metadata/test.csd"));
+            Check(DiagnosticCatalog.For(GameId.PoE1, "Effects", []).Single().Matches("metadata/effects/spells/test.aoc"));
+        });
+        test("Sequential diagnostic rules inspect preceding output without changing original bytes", () =>
+        {
+            var first = new TextRule("Rain", "2694490", "metadata/", ".env", "rain", "snow");
+            var second = first with { Pattern = "snow", Replacement = "fog" };
+            var bytes = Encoding.Unicode.GetBytes("rain");
+            var results = DiagnosticRuleProbe.Evaluate("metadata/test.env", bytes, [first, second]);
+            Check(results.Length == 2 && results.All(r => r.Matches == 1 && r.Changed == true && r.Error == null));
+            Check(Encoding.Unicode.GetString(bytes) == "rain");
+        });
+        test("Diagnostic descriptions redact Windows and Unix personal paths", () =>
+        {
+            var i = new GameInstall(GameId.PoE1, ClientKind.GGG, root, ResourceFormat.Ggpk,
+                Path.Combine(root, "Content.ggpk"), "", "v1", "v1", temp);
+            var text = DiagnosticPackager.Redact(root + "\nC:\\Users\\Private\\game\n/home/private/game", i);
+            Check(!text.Contains(root) && !text.Contains("Private") && !text.Contains("/home/private"));
+        });
         test("Pinned SDK and checksum validation do not require a game or Oodle", () =>
         {
             Check(SdkSpec.Pinned.Version == "10.0.403" && new Uri(SdkSpec.Pinned.Url).Host == "builds.dotnet.microsoft.com");
