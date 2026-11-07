@@ -222,6 +222,7 @@ public partial class MainWindow : Window
             var store = new BuildStore(AdaptivePatcher.DataRoot, install);
             using var gate = store.Lock();
             var fresh = await Task.Run(() => VersionTracker.AcceptVerified(install));
+            await Task.Run(() => new DiagnosticPackager(AdaptivePatcher.DataRoot).ConfirmVerified(fresh));
             installs.RemoveAll(i => i.Key == fresh.Key); installs.Add(fresh);
             GameSelector.ItemsSource = installs.ToArray(); GameSelector.SelectedItem = fresh;
             StatusText.Text = "Исходная версия принята по вашему подтверждению. Выполните новый анализ.";
