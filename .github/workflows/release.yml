@@ -1,0 +1,138 @@
+name: Publish tested Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Build and test run ID
+        required: true
+        type: string
+      tag:
+        description: Version tag matching the application version
+        required: true
+        default: v0.1.0
+        type: string
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN_ID: ${{ inputs.run_id }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Validate source build
+        id: source
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          repo = os.environ['GH_REPO']
+          run_id = os.environ['SOURCE_RUN_ID']
+          if not re.fullmatch(r'[0-9]+', run_id):
+              raise SystemExit('Invalid run ID')
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', os.environ['RELEASE_TAG']):
+              raise SystemExit('Invalid version tag')
+          run = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/actions/runs/{run_id}'], text=True))
+          if (run['conclusion'] != 'success' or run['status'] != 'completed'
+              or run['path'] != '.github/workflows/ci.yml'
+              or run['head_repository']['full_name'] != repo):
+              raise SystemExit('A successful build from this repository is required')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('sha=' + run['head_sha'] + '\n')
+          print('Packaging tested commit', run['head_sha'])
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: PoeAdaptive-win-x64
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: staged
+      - name: Package binaries and matching source
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          import hashlib, json, os, subprocess
+          import xml.etree.ElementTree as ET
+          version = os.environ['RELEASE_TAG'][1:]
+          if ET.parse('PoeRedux/PoeRedux.csproj').findtext('.//Version') != version:
+              raise SystemExit('Tag does not match application version')
+          staged = Path('staged')
+          if not (staged / 'PoeAdaptive.exe').is_file():
+              raise SystemExit('Windows executable is missing')
+          release = Path('release')
+          release.mkdir()
+          source = release / f'PoeAdaptive-{version}-source.zip'
+          subprocess.run(['git', 'archive', '--format=zip', '--prefix=PoeAdaptive/',
+              '--output=' + str(source), 'HEAD'], check=True)
+          metadata = {
+              'version': version,
+              'source_commit': os.environ['SOURCE_SHA'],
+              'ci_run': f"https://github.com/{os.environ['GH_REPO']}/actions/runs/{os.environ['SOURCE_RUN_ID']}",
+              'game_client_validation': False,
+              'oodle_dll_included': False
+          }
+          (staged / 'BUILD.json').write_text(json.dumps(metadata, indent=2) + '\n')
+          bundle = release / f'PoeAdaptive-{version}-win-x64.zip'
+          with ZipFile(bundle, 'w', ZIP_DEFLATED, compresslevel=6) as archive:
+              for file in sorted(staged.iterdir()):
+                  if file.is_file() and file.suffix.lower() != '.pdb':
+                      archive.write(file, file.name)
+              archive.write(source, 'source/' + source.name)
+          checks = []
+          for file in sorted(release.glob('*.zip')):
+              with ZipFile(file) as archive:
+                  if archive.testzip() is not None:
+                      raise SystemExit('Archive integrity check failed')
+                  if any('oo2core' in path.lower() for path in archive.namelist()):
+                      raise SystemExit('Native Oodle library must not be redistributed')
+              checks.append(hashlib.sha256(file.read_bytes()).hexdigest() + '  ' + file.name)
+          (release / 'SHA256SUMS.txt').write_text('\n'.join(checks) + '\n')
+          notes = (
+              f'Тестовая версия PoE Adaptive {version} для PoE 1 и PoE 2 в Steam.\n\n'
+              f'Скачайте и распакуйте `PoeAdaptive-{version}-win-x64.zip`, прочитайте README и запустите EXE. '
+              '.NET Runtime включён. Совместимая Oodle DLL требуется отдельно из локальной установки игры/инструмента.\n\n'
+              'Архив включает исходники; они также приложены отдельно. Контрольные суммы — в SHA256SUMS.txt.\n\n'
+              'Приложение повторно проверяет известные правила после обновлений. Самостоятельного создания новых правил нет. '
+              'Поведение на актуальных клиентах игр ещё требует проверки.\n\n'
+              f"Проверенная [Windows-сборка]({metadata['ci_run']}); исходники `{metadata['source_commit']}`.\n"
+          )
+          (release / 'notes.md').write_text(notes, encoding='utf-8')
+          PY
+      - name: Upload and publish prerelease
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess
+          repo = os.environ['GH_REPO']
+          tag = os.environ['RELEASE_TAG']
+          sha = os.environ['SOURCE_SHA']
+          releases = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/releases?per_page=100'], text=True))
+          existing = next((r for r in releases if r['tag_name'] == tag), None)
+          if existing:
+              if not existing['draft']:
+                  raise SystemExit('This version is already published; choose a new version')
+              target = existing['target_commitish']
+              commit = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/commits/{target}'], text=True))
+              if commit['sha'] != sha:
+                  raise SystemExit('Draft release targets a different commit')
+          else:
+              subprocess.run(['gh', 'release', 'create', tag, '--draft', '--prerelease',
+                  '--target', sha, '--title', f'PoE Adaptive {tag} — тестовая версия',
+                  '--notes-file', 'release/notes.md'], check=True)
+          files = [str(p) for p in sorted(Path('release').iterdir()) if p.suffix in ('.zip', '.txt')]
+          subprocess.run(['gh', 'release', 'upload', tag, *files, '--clobber'], check=True)
+          subprocess.run(['gh', 'release', 'edit', tag, '--draft=false', '--prerelease',
+              '--title', f'PoE Adaptive {tag} — тестовая версия', '--notes-file', 'release/notes.md'], check=True)
+          PY
