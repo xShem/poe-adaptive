@@ -295,6 +295,8 @@ public sealed class AdaptivePatcher
                 if (next != text) PatchIO.Write(file, encoding.GetBytes(next));
             }
             if (total < rule.MinMatches) throw new InvalidDataException($"Правило {rule.PatchId}: ожидаемые данные не найдены.");
+            // LibBundle3 buffers writes: a following override must read committed staging bytes.
+            index.Save();
         }
     }
 

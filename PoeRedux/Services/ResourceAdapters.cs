@@ -47,7 +47,7 @@ internal sealed class ContainerFactory(GGPK ggpk, string work) : IBundleFactory
     public Bundle GetBundle(BundleRecord record)
     {
         var local = IsolatedFactory.SafePath(work, record.Path);
-        if (File.Exists(local)) return new Bundle(new FileStream(local, FileMode.Open, FileAccess.Read, FileShare.Read), false, record);
+        if (File.Exists(local)) return new Bundle(new FileStream(local, FileMode.Open, FileAccess.ReadWrite, FileShare.Read), false, record);
         if (!bundles.TryFindNode(record.Path, out var node) || node is not LibGGPK3.Records.FileRecord file) throw new FileNotFoundException(record.Path);
         return new Bundle(new GGFileStream(file), false, record); // underlying GGPK stream is explicitly FileAccess.Read
     }

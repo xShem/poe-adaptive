@@ -83,6 +83,20 @@ static class AdditionalChecks
             using (var input = File.OpenRead(container)) using (var ggpk = new GGPK(input, true)) Check(ggpk.Root["Bundles2"] != null);
             Check(BuildStore.HashFile(container) == before);
         });
+        test("GGPK staging supports successive bundle writes while the source stays read-only", () =>
+        {
+            var before = BuildStore.HashFile(container); var work = Area("GGPK staging writes");
+            var path = Path.Combine(work, "PoeAdaptive", "session", "0.bundle.bin"); Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, BundleEnvelope([1,2,3,4]));
+            using var input = File.OpenRead(container); using var ggpk = new GGPK(input, true);
+            var factory = new PoeRedux.Services.ContainerFactory(ggpk, work);
+            using (var staged = factory.GetBundle(new FixtureBundleRecord("PoeAdaptive/session/0")))
+            {
+                var stream = staged.UnsafeGetStream(); stream.Position = stream.Length; stream.WriteByte(42); stream.Flush();
+            }
+            using (var original = factory.GetBundle(new FixtureBundleRecord("fixture"))) Check(!original.UnsafeGetStream().CanWrite);
+            Check(File.ReadAllBytes(path)[^1] == 42 && BuildStore.HashFile(container) == before);
+        });
         test("Own patches, original verification and confirmed update get distinct versions", () =>
         {
             var i = VersionTracker.Resolve(externalInstall); var initial = i.BuildId;
@@ -265,7 +279,9 @@ static class AdditionalChecks
             w.Write(50); w.Write(0x52494450); w.Write(1); w.Write(0); w.Write(new byte[32]); w.Write((short)0);
         }
         using var ggpk = new GGPK(path); ggpk.Root.FindOrAddFile("Bundles2/_.index.bin", out var file); file.Write(index);
+        ggpk.Root.FindOrAddFile("Bundles2/fixture.bundle.bin", out var fixture); fixture.Write(BundleEnvelope([1,2,3,4]));
     }
+    private sealed class FixtureBundleRecord(string path) : LibBundle3.Records.BundleRecord(path, 4, null!, 0);
     private sealed class FakeAdapter(params GameInstall[] installs) : IInstallationAdapter
     {
         public ClientKind Client => ClientKind.GGG;
