@@ -259,6 +259,8 @@ public sealed class DiagnosticPackager(string dataRoot)
         using var gate = store.Lock();
         cancellation.ThrowIfCancellationRequested();
         FileSafety.RequireIdle(i, false);
+        AdaptivePatcher.EnsureClosed();
+        AdaptivePatcher.ConfigureOodle(i);
         var hint = VersionTracker.Hint(i);
         var indexHash = BuildStore.HashFile(i.ResourcePath); // only on user request/update, never each poll
         var state = store.Load();
