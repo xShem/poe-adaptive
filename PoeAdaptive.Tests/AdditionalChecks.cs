@@ -235,7 +235,7 @@ static class AdditionalChecks
         });
         test("Diagnostic text decoding retains raw UTF-16 BOM and refuses binary previews", () =>
         {
-            var raw = new byte[] { 0xff, 0xfe, .. Encoding.Unicode.GetBytes("\"rain_intensity\": 4") };
+            byte[] raw = [0xff, 0xfe, .. Encoding.Unicode.GetBytes("\"rain_intensity\": 4")];
             var (text, encoding) = PoeRedux.Services.DiagnosticCatalog.DecodeText(raw, "metadata/settings.env");
             Check(text!.Contains("rain_intensity") && encoding == "utf-16le-bom"
                 && raw[0] == 0xff && raw[1] == 0xfe);
