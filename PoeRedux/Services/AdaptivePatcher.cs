@@ -145,7 +145,7 @@ public sealed class AdaptivePatcher
         }
     }
 
-    private static void ConfigureOodle(GameInstall install)
+    internal static void ConfigureOodle(GameInstall install)
     {
         lock (nativeLock)
         {
