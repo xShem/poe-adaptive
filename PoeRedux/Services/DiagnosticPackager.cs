@@ -127,16 +127,17 @@ public sealed class DiagnosticPackager(string dataRoot)
     private static string HashText(string text) => Hash(Encoding.UTF8.GetBytes(text));
     private string CachePath(GameInstall i, string ruleHash) =>
         Path.Combine(CacheRoot, i.Key, HashText(i.BuildId + "|" + ruleHash)[..24]);
-    private sealed record VerifiedStamp(string Installation, string Version, string ResourceSha256, string ResourceHint, DateTimeOffset ConfirmedAt);
+    private sealed record VerifiedStamp(string Installation, string Version, string ResourceSha256, string ResourceHint,
+        DateTimeOffset ConfirmedAt, Dictionary<string, string>? BundleHashes = null);
     private string VerifiedPath(GameInstall i) => Path.Combine(CacheRoot, i.Key, "verified-" + HashText(i.BuildId)[..16] + ".json");
     /// <summary>Records explicit user attestation after official client file verification.</summary>
     public void ConfirmVerified(GameInstall i)
     {
         FileSafety.RequireIdle(i, false);
         BuildStore.SaveJson(VerifiedPath(i), new VerifiedStamp(i.Key, i.BuildId,
-            BuildStore.HashFile(i.ResourcePath), VersionTracker.Hint(i), DateTimeOffset.UtcNow));
+            BuildStore.HashFile(i.ResourcePath), VersionTracker.Hint(i), DateTimeOffset.UtcNow, BundleFingerprints(i)));
     }
-    private bool HasAttestation(GameInstall i, string hash)
+    internal bool HasAttestation(GameInstall i, string hash)
     {
         var path = VerifiedPath(i);
         if (!File.Exists(path)) return false;
@@ -144,10 +145,33 @@ public sealed class DiagnosticPackager(string dataRoot)
         {
             var stamp = JsonSerializer.Deserialize<VerifiedStamp>(File.ReadAllText(path));
             return stamp?.Installation == i.Key && stamp.Version == i.BuildId && stamp.ResourceSha256 == hash
-                && stamp.ResourceHint == VersionTracker.Hint(i);
+                && stamp.ResourceHint == VersionTracker.Hint(i)
+                && (i.Format != ResourceFormat.ExternalBundles || stamp.BundleHashes != null
+                    && SameHashes(stamp.BundleHashes, BundleFingerprints(i)));
         }
         catch (JsonException) { return false; }
     }
+    private static Dictionary<string, string> BundleFingerprints(GameInstall i) => i.Format != ResourceFormat.ExternalBundles ? new()
+        : Directory.EnumerateFiles(Path.GetDirectoryName(i.ResourcePath)!, "*.bundle.bin", SearchOption.AllDirectories)
+            .Order(StringComparer.OrdinalIgnoreCase).ToDictionary(p => p, BuildStore.HashFile, StringComparer.OrdinalIgnoreCase);
+    private static bool SameHashes(Dictionary<string, string> a, Dictionary<string, string> b) =>
+        a.Count == b.Count && a.All(p => b.TryGetValue(p.Key, out var hash) && hash == p.Value);
+    private string AppliedPath(GameInstall i) => Path.Combine(CacheRoot, i.Key, "applied-" + HashText(i.BuildId)[..16] + ".json");
+    public void RecordApplied(GameInstall i) => BuildStore.SaveJson(AppliedPath(i),
+        new VerifiedStamp(i.Key, i.BuildId, BuildStore.HashFile(i.ResourcePath), VersionTracker.Hint(i), DateTimeOffset.UtcNow, BundleFingerprints(i)));
+    private bool MatchesApplied(GameInstall i, string hash, Dictionary<string, string> bundles)
+    {
+        if (i.Format == ResourceFormat.Ggpk) return true; // Full GGPK hash covers contained resources.
+        if (!File.Exists(AppliedPath(i))) return false;
+        try
+        {
+            var stamp = JsonSerializer.Deserialize<VerifiedStamp>(File.ReadAllText(AppliedPath(i)));
+            return stamp?.Installation == i.Key && stamp.Version == i.BuildId && stamp.ResourceSha256 == hash
+                && stamp.BundleHashes != null && SameHashes(stamp.BundleHashes, bundles);
+        }
+        catch (JsonException) { return false; }
+    }
+
     private sealed record CachedRecord(string InternalPath, string Sha256, long Size, string Version,
         string RulesHash, string Installation, string Evidence);
     private sealed record CachedIndex(int SchemaVersion, string Version, string RulesHash, string Installation,
@@ -314,7 +338,7 @@ public sealed class DiagnosticPackager(string dataRoot)
         AdaptivePatcher.ConfigureOodle(i);
         var hint = VersionTracker.Hint(i);
         var indexHash = BuildStore.HashFile(i.ResourcePath); // only on user request/update, never each poll
-        var bundlesBefore = VersionTracker.Bundles(i);
+        var bundlesBefore = BundleFingerprints(i);
         var witnesses = Directory.EnumerateFiles(i.Root, "*.exe", SearchOption.TopDirectoryOnly)
             .Concat(File.Exists(i.ManifestPath) ? new[] { i.ManifestPath } : Array.Empty<string>())
             .Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(p => p, BuildStore.HashFile);
@@ -334,7 +358,7 @@ public sealed class DiagnosticPackager(string dataRoot)
         var attested = HasAttestation(i, indexHash);
         var identity = attested ? "current-original-verified" :
             IsVerifiedOriginal(i, state, indexHash) ? "current-baseline-unverified" :
-            state is not null && state.CurrentHash == indexHash && state.OriginalHash != indexHash ? "current-poeadaptive-modified" :
+            state is not null && state.CurrentHash == indexHash && state.OriginalHash != indexHash && MatchesApplied(i, indexHash, bundlesBefore) ? "current-poeadaptive-modified" :
             "unknown-origin";
         var evidence = attested ? "User explicitly confirmed official verification; exact file SHA-256 matched." :
             identity == "current-baseline-unverified"

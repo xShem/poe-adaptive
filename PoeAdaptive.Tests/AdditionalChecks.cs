@@ -318,6 +318,20 @@ static class AdditionalChecks
             var text = DiagnosticPackager.Redact(root + "\nC:\\Users\\Private\\game\n/home/private/game", i);
             Check(!text.Contains(root) && !text.Contains("Private") && !text.Contains("/home/private"));
         });
+        test("Original attestation rejects bundle changes even with preserved length and timestamp", () =>
+        {
+            var location = Area("Diagnostic attestation");
+            var index = Path.Combine(location, "_.index.bin"); File.WriteAllText(index, "index");
+            var bundle = Path.Combine(location, "sample.bundle.bin"); File.WriteAllText(bundle, "before");
+            var i = new GameInstall(GameId.PoE1, ClientKind.GGG, location, ResourceFormat.ExternalBundles,
+                index, "", "v1", "v1", temp);
+            var packager = new DiagnosticPackager(Area("Diagnostic attestation data"));
+            packager.ConfirmVerified(i);
+            Check(packager.HasAttestation(i, BuildStore.HashFile(index)));
+            var timestamp = File.GetLastWriteTimeUtc(bundle);
+            File.WriteAllText(bundle, "after!"); File.SetLastWriteTimeUtc(bundle, timestamp);
+            Check(!packager.HasAttestation(i, BuildStore.HashFile(index)));
+        });
         test("Pinned SDK and checksum validation do not require a game or Oodle", () =>
         {
             Check(SdkSpec.Pinned.Version == "10.0.403" && new Uri(SdkSpec.Pinned.Url).Host == "builds.dotnet.microsoft.com");

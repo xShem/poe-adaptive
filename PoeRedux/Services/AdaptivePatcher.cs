@@ -338,6 +338,8 @@ public sealed class AdaptivePatcher
             }
         store.Publish(plan.IndexPath, plan.Report.BeforeHash, () => { EnsureClosed(); FileSafety.RequireIdle(plan.Install); });
         SaveProfile(plan.Install, plan.Profile with { LastBuild = plan.Install.BuildId });
+        try { new DiagnosticPackager(dataRoot).RecordApplied(plan.Install); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Missing optional receipt means unknown provenance. */ }
     }
 
     public void Restore(GameInstall install)
