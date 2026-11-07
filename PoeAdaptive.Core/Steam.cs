@@ -132,7 +132,7 @@ public static class SteamLocator
                 var manifest = Path.Combine(lib, "steamapps", $"appmanifest_{id}.acf");
                 if (!File.Exists(manifest)) continue;
                 try { result.Add(FromManifest(manifest)); }
-                catch (IOException) { /* Incomplete installs are not selectable. */ }
+                catch (Exception ex) when (ex is IOException or InvalidDataException) { /* Invalid/incomplete installs are not selectable. */ }
             }
         return result.DistinctBy(x => x.Key).ToArray();
     }

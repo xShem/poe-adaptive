@@ -18,18 +18,29 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<ColorModsViewModel> colors = [];
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(20) };
     private readonly HashSet<string> failedBuilds = [];
-    private List<SteamInstall> installs = [];
-    private SteamInstall? selected;
+    private readonly HashSet<string> diagnosedBuilds = [];
+    private CancellationTokenSource? diagnosticCancellation;
+    private DiagnosticExport? diagnosticResult;
+    private bool diagnosticRunning;
+    private List<GameInstall> installs = [];
+    private GameInstall? selected;
     private PreparedPatch? prepared;
     private bool busy;
+    private bool polling;
 
     public MainWindow()
     {
         InitializeComponent();
         PatchesItemsControl.ItemsSource = patches;
-        Loaded += (_, _) => { FindSteam(); timer.Start(); };
+        Loaded += (_, _) => { FindGames(); timer.Start(); };
         timer.Tick += async (_, _) => await PollUpdates();
-        Closed += (_, _) => { timer.Stop(); prepared?.Dispose(); };
+        Closing += (_, e) =>
+        {
+            if (!diagnosticRunning) return;
+            diagnosticCancellation?.Cancel(); e.Cancel = true;
+            StatusText.Text = "Отмена диагностики… Дождитесь завершения чтения, затем закройте окно.";
+        };
+        Closed += (_, _) => { timer.Stop(); diagnosticCancellation?.Cancel(); prepared?.Dispose(); };
     }
 
     private void InvalidatePlan()
@@ -40,32 +51,28 @@ public partial class MainWindow : Window
         if (ResultsList != null) ResultsList.ItemsSource = null;
     }
 
-    private void FindSteam()
+    private void FindGames()
     {
         try
         {
-            var roots = new List<string> { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam") };
-            using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam"))
-                if (key?.GetValue("SteamPath") is string root) roots.Add(root);
-            using (var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Valve\Steam"))
-                if (key?.GetValue("InstallPath") is string root) roots.Add(root);
-            installs = SteamLocator.Discover(roots).ToList();
+            var manual = installs;
+            installs = InstallationCatalog.Default.Discover().Concat(manual).DistinctBy(i => i.Key).ToList();
             var oldKey = selected?.Key;
             GameSelector.ItemsSource = installs;
             GameSelector.SelectedItem = installs.FirstOrDefault(x => x.Key == oldKey) ?? installs.FirstOrDefault();
-            if (installs.Count == 0) StatusText.Text = "Завершите установку в Steam или выберите индекс вручную.";
+            if (installs.Count == 0) StatusText.Text = "Завершите установку клиента или выберите файл / каталог вручную.";
         }
         catch (Exception ex) { ShowError(ex); }
     }
-    private void FindSteam_Click(object sender, RoutedEventArgs e) => FindSteam();
+    private void FindGames_Click(object sender, RoutedEventArgs e) => FindGames();
 
     private void Browse_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Filter = "Steam index (_.index.bin)|_.index.bin", Title = "Выберите Bundles2/_.index.bin" };
+        var dialog = new OpenFileDialog { Filter = "Ресурсы PoE|*.bin;*.ggpk|Все файлы|*.*", Title = "Выберите Bundles2/_.index.bin или Content.ggpk" };
         if (dialog.ShowDialog() != true) return;
         try
         {
-            var install = SteamLocator.FromIndex(dialog.FileName);
+            var install = InstallationCatalog.Default.Manual(dialog.FileName);
             installs.RemoveAll(x => x.Key == install.Key);
             installs.Add(install);
             GameSelector.ItemsSource = installs.ToArray();
@@ -74,16 +81,29 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
     }
 
+    private void BrowseFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "Каталог установки PoE" };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var install = InstallationCatalog.Default.Manual(dialog.FolderName);
+            installs.RemoveAll(i => i.Key == install.Key); installs.Add(install);
+            GameSelector.ItemsSource = installs.ToArray(); GameSelector.SelectedItem = install;
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
     private void GameSelector_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         InvalidatePlan();
-        selected = GameSelector.SelectedItem as SteamInstall;
+        selected = GameSelector.SelectedItem as GameInstall;
         patches.Clear();
         colors.Clear();
         if (selected == null) return;
         try
         {
-            var available = PatchCatalog.Create(selected.AppId);
+            var available = PatchCatalog.Create(selected.Game);
             var profile = patcher.LoadProfile(selected);
             foreach (var patch in available)
             {
@@ -94,7 +114,7 @@ public partial class MainWindow : Window
             foreach (var color in profile?.Colors ?? PatchCatalog.Colors(available)) colors.Add(new(color.Copy()));
             ZoomSlider.Value = profile?.Zoom ?? 2.4;
             AutoApplyBox.IsChecked = profile?.AutoApply ?? false;
-            InstallText.Text = $"{selected.Root}\nSteam build {selected.BuildId} · {selected.IndexPath}";
+            InstallText.Text = $"{selected.Root}\n{selected.Client} · {selected.Format} · версия {selected.BuildId} · {selected.IndexPath}\nРезерв дополнительного места: {ResourceAdapters.EstimateAdditionalSpace(selected) / 1073741824.0:F1} ГиБ (оценка до анализа)";
             StatusText.Text = "Выберите функции и выполните анализ.";
         }
         catch (Exception ex) { ShowError(ex); }
@@ -152,7 +172,7 @@ public partial class MainWindow : Window
             Status = r.ChangedFiles > 0 ? "Изменения подготовлены" : "Нет изменений: правило устарело, перекрыто другой функцией или отключено"
         }).ToArray();
         ApplyButton.IsEnabled = plan.CanApply;
-        InstallText.Text = $"{plan.Install.Root}\nSteam build {plan.Install.BuildId} · подготовлено без записи в игру";
+        InstallText.Text = $"{plan.Install.Root}\n{plan.Install.Client} · {plan.Install.Format} · версия {plan.Install.BuildId} · подготовлено без записи в игру";
     }
     private async void Analyze_Click(object sender, RoutedEventArgs e)
     {
@@ -162,11 +182,36 @@ public partial class MainWindow : Window
         await Run(async () =>
         {
             var profile = CaptureProfile();
-            prepared = await Task.Run(() => patcher.Analyze(install, profile,
-                message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
-            ShowResults(prepared);
-            StatusText.Text = prepared.CanApply ? "План готов. Проверьте результат и примените изменения."
-                : "Снимите выбор функций без изменений и повторите анализ.";
+            var required = ResourceAdapters.EstimateAdditionalSpace(install);
+            StatusText.Text = $"Подготовка ресурсов. Резерв места: {required / 1073741824.0:F1} ГиБ. GGPK обрабатывается на отдельной копии.";
+            Exception? analysisError = null;
+            try
+            {
+                prepared = await Task.Run(() => patcher.Analyze(install, profile,
+                    message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
+                ShowResults(prepared);
+            }
+            catch (Exception ex) { analysisError = ex; }
+            if (analysisError is not null || prepared is { CanApply: false })
+            {
+                try
+                {
+                    var report = await Task.Run(() => new DiagnosticPackager(AdaptivePatcher.DataRoot).Export(
+                        new DiagnosticOptions(install, profile.Patches, Actual: analysisError?.GetType().Name), prepared,
+                        message => Dispatcher.BeginInvoke(() => StatusText.Text = message)));
+                    diagnosticResult = report;
+                    OpenDiagnosticButton.IsEnabled = true;
+                    CopyDiagnosticButton.IsEnabled = true;
+                    StatusText.Text = $"Проблемный анализ: диагностический ZIP готов ({report.ZipPaths.Length} частей). " +
+                        (analysisError?.Message ?? "Найден нулевой результат.");
+                }
+                catch (Exception diagnosticError)
+                {
+                    StatusText.Text = "Диагностика недоступна: " + diagnosticError.Message;
+                    if (analysisError is not null) throw analysisError;
+                }
+            }
+            else StatusText.Text = "План готов. Проверьте результат и примените изменения.";
         });
     }
     private async void Apply_Click(object sender, RoutedEventArgs e)
@@ -192,7 +237,25 @@ public partial class MainWindow : Window
         {
             await Task.Run(() => patcher.Restore(install));
             AutoApplyBox.IsChecked = false;
-            StatusText.Text = "Восстановлен исходный индекс текущей сборки. Автоприменение выключено.";
+            StatusText.Text = "Восстановлены исходные ресурсы текущей версии. Автоприменение выключено.";
+        });
+    }
+    private async void Verified_Click(object sender, RoutedEventArgs e)
+    {
+        if (selected == null) return;
+        if (System.Windows.MessageBox.Show(this, "Используйте эту команду только после завершённой официальной проверки файлов выбранного клиента. Вы подтверждаете, что файлы восстановлены клиентом и сторонних патчей нет? Старые копии и журнал сохранятся.", "Подтверждение исходной версии", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        var install = selected;
+        InvalidatePlan();
+        await Run(async () =>
+        {
+            AdaptivePatcher.EnsureClosed();
+            var store = new BuildStore(AdaptivePatcher.DataRoot, install);
+            using var gate = store.Lock();
+            var fresh = await Task.Run(() => VersionTracker.AcceptVerified(install));
+            await Task.Run(() => new DiagnosticPackager(AdaptivePatcher.DataRoot).ConfirmVerified(fresh));
+            installs.RemoveAll(i => i.Key == fresh.Key); installs.Add(fresh);
+            GameSelector.ItemsSource = installs.ToArray(); GameSelector.SelectedItem = fresh;
+            StatusText.Text = "Исходная версия принята по вашему подтверждению. Выполните новый анализ.";
         });
     }
     private void OpenData_Click(object sender, RoutedEventArgs e)
@@ -201,16 +264,100 @@ public partial class MainWindow : Window
         Process.Start(new ProcessStartInfo(AdaptivePatcher.DataRoot) { UseShellExecute = true });
     }
 
+    private async void Diagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (selected is null || busy) return;
+        var install = selected;
+        var selectedFeatures = patches.Where(p => p.IsSelected).Select(p => PatchCatalog.Id(p.Patch)).ToArray();
+        var options = new DiagnosticOptions(install, selectedFeatures, ExpectedText.Text, ActualText.Text);
+        diagnosticCancellation?.Dispose();
+        diagnosticCancellation = new CancellationTokenSource();
+        var cancellation = diagnosticCancellation.Token;
+        busy = true;
+        diagnosticRunning = true;
+        foreach (UIElement child in MainGrid.Children)
+            if (System.Windows.Controls.Grid.GetRow(child) != 4) child.IsEnabled = false;
+        CancelDiagnosticButton.IsEnabled = true;
+        OpenDiagnosticButton.IsEnabled = false;
+        CopyDiagnosticButton.IsEnabled = false;
+        diagnosticResult = null;
+        Progress.Visibility = Visibility.Visible;
+        try
+        {
+            var packager = new DiagnosticPackager(AdaptivePatcher.DataRoot);
+            diagnosticResult = await Task.Run(() => packager.Export(options, prepared,
+                message => Dispatcher.BeginInvoke(() => StatusText.Text = message), cancellation), cancellation);
+            OpenDiagnosticButton.IsEnabled = true;
+            CopyDiagnosticButton.IsEnabled = true;
+            StatusText.Text = $"Готово: {diagnosticResult.ZipPaths.Length} ZIP, {diagnosticResult.TotalBytes / 1024.0:F0} КиБ. Файлы игры не изменены.";
+        }
+        catch (OperationCanceledException) { StatusText.Text = "Подготовка диагностики отменена."; }
+        catch (Exception ex) { ShowError(ex); }
+        finally
+        {
+            diagnosticRunning = false;
+            busy = false;
+            foreach (UIElement child in MainGrid.Children) child.IsEnabled = true;
+            CancelDiagnosticButton.IsEnabled = false;
+            Progress.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void CancelDiagnostic_Click(object sender, RoutedEventArgs e) => diagnosticCancellation?.Cancel();
+
+    private void OpenDiagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (diagnosticResult is not { ZipPaths.Length: > 0 }) return;
+        var first = diagnosticResult.ZipPaths[0];
+        Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + first + "\"") { UseShellExecute = true });
+    }
+
+    private void CopyDiagnostic_Click(object sender, RoutedEventArgs e)
+    {
+        if (diagnosticResult is null) return;
+        Clipboard.SetText(diagnosticResult.Prompt);
+        StatusText.Text = "Запрос для ChatGPT скопирован. Приложите все части ZIP.";
+    }
+
     private async Task PollUpdates()
     {
-        if (busy) return;
+        if (busy || polling) return;
+        polling = true;
+        try { await PollCore(); } finally { polling = false; }
+    }
+    private async Task PollCore()
+    {
         try { AdaptivePatcher.EnsureClosed(); } catch (IOException) { return; }
         foreach (var candidate in installs.ToArray())
         {
-            SteamInstall fresh;
+            GameInstall fresh;
             Profile? profile;
-            try { fresh = candidate.Refresh(); profile = patcher.LoadProfile(fresh); }
-            catch (Exception ex) { StatusText.Text = $"Ожидание готовности Steam: {ex.Message}"; continue; }
+            try { fresh = await Task.Run(candidate.Refresh); profile = patcher.LoadProfile(fresh); }
+            catch (Exception ex) { StatusText.Text = $"Ожидание готовности клиента: {ex.Message}"; continue; }
+            // Export on a confirmed installation build change, regardless of auto-apply settings.
+            // Never turn a failed/unknown version check into an accepted baseline.
+            if (candidate.BuildId.Length > 0 && fresh.BuildId != candidate.BuildId)
+            {
+                var diagnosticKey = fresh.Key + ":" + fresh.BuildId;
+                if (diagnosedBuilds.Add(diagnosticKey))
+                {
+                    await Run(async () =>
+                    {
+                        try
+                        {
+                            var features = profile?.Patches ?? [];
+                            var packager = new DiagnosticPackager(AdaptivePatcher.DataRoot);
+                            var result = await Task.Run(() => packager.Export(new DiagnosticOptions(fresh,
+                                features, Automatic: true, PriorVersion: candidate.BuildId)));
+                            diagnosticResult = result;
+                            OpenDiagnosticButton.IsEnabled = true;
+                            CopyDiagnosticButton.IsEnabled = true;
+                            StatusText.Text = $"Обновление: создан диагностический пакет ({result.ZipPaths.Length} частей).";
+                        }
+                        catch (Exception ex) { StatusText.Text = "Диагностика обновления отложена: " + ex.Message; }
+                    });
+                }
+            }
             if (profile == null || !profile.AutoApply || profile.LastBuild.Length == 0 || profile.LastBuild == fresh.BuildId) continue;
             var key = fresh.Key + ":" + fresh.BuildId;
             if (failedBuilds.Contains(key)) continue;
@@ -224,7 +371,7 @@ public partial class MainWindow : Window
                     if (!plan.CanApply) throw new IOException("Автоприменение остановлено: есть функции без найденных изменений. Выполните анализ вручную.");
                     await Task.Run(() => patcher.Apply(plan));
                     ApplyButton.IsEnabled = false;
-                    StatusText.Text = $"{fresh.Title}: профиль повторно применён к Steam build {fresh.BuildId}.";
+                    StatusText.Text = $"{fresh.Title}: профиль повторно применён к версии {fresh.BuildId}.";
                 }
                 catch (Exception ex)
                 {

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -8,7 +8,7 @@
     <RootNamespace>PoeRedux</RootNamespace>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>..\icon.ico</ApplicationIcon>
-    <Version>0.1.0</Version>
+    <Version>0.3.0</Version>
     <AssemblyName>PoeAdaptive</AssemblyName>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- Disables CET / shadow-stack on the exe to avoid a fatal startup crash (0x80131506) caused by the native non-CET-aware oo2core.dll. See issue #29. -->
@@ -24,7 +24,7 @@
   <ItemGroup>
     <None Remove="oo2core.dll" />
     <ProjectReference Include="../PoeAdaptive.Engine/PoeAdaptive.Engine.csproj" />
-    <Compile Remove="Patches/**/*.cs;Patches2/**/*.cs;Models/ColorModsOption.cs;Services/AdaptivePatcher.cs" />
+    <Compile Remove="Patches/**/*.cs;Patches2/**/*.cs;Models/ColorModsOption.cs;Services/*.cs" />
   </ItemGroup>
 
   <ItemGroup>

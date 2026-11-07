@@ -7,5 +7,5 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../PoeAdaptive.Engine/PoeAdaptive.Engine.csproj" />
-  </ItemGroup>
+  <ProjectReference Include="../PoeAdaptive.Build.Core/PoeAdaptive.Build.Core.csproj" /></ItemGroup>
 </Project>
