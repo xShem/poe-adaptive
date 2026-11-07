@@ -6,6 +6,15 @@ using PoeAdaptive.Core;
 using PoeRedux.Patches;
 using PoeRedux.Services;
 
+if (args.Contains("--wait-leaf")) { await Task.Delay(60000); return; }
+if (args.Contains("--wait-child"))
+{
+    var start = new System.Diagnostics.ProcessStartInfo(AdditionalChecks.DotnetHost) { UseShellExecute = false };
+    start.ArgumentList.Add(typeof(AdditionalChecks).Assembly.Location); start.ArgumentList.Add("--wait-leaf");
+    using var leaf = System.Diagnostics.Process.Start(start)!;
+    Console.WriteLine("LEAF_PID=" + leaf.Id);
+    await Task.Delay(60000); return;
+}
 int passed = 0;
 void Check(bool condition, string message = "Assertion failed")
 { if (!condition) throw new Exception(message); }
@@ -189,6 +198,7 @@ try
         Check(RunPatch(new Effects(), tree) == 1);
         Check(protectedFile.Writes == 0 && !cosmetic.Text.Contains("Render"));
     });
+    AdditionalChecks.Run(temp, Test);
     Console.WriteLine($"{passed} checks passed.");
 }
 finally { Directory.Delete(temp, true); }

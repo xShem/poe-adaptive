@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<IsAotCompatible>true</IsAotCompatible>
+		<CheckForOverflowUnderflow Condition="'$(Configuration)' == 'Debug'">true</CheckForOverflowUnderflow>
+	</PropertyGroup>
+
+	<PropertyGroup Label="PackageInfo">
+		<Version>1.8.0</Version>
+		<Authors>aianlinb</Authors>
+		<Copyright>Copyright © 2024-2025 aianlinb</Copyright>
+		<Description>Library with useful high-performance methods for Span/Stream/Enumerable etc...</Description>
+		<PackageId>$(Authors).$(AssemblyName)</PackageId>
+		<PackageProjectUrl>https://github.com/$(Authors)/$(AssemblyName)</PackageProjectUrl>
+		<PackageTags>$(AssemblyName);Span;Stream;Memory;Extension;Performance;IO;System</PackageTags>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+		<RepositoryUrl>$(PackageProjectUrl)</RepositoryUrl>
+		<IncludeSymbols>true</IncludeSymbols>
+		<IncludeSource>true</IncludeSource>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>1573;1591</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="../System.Private.CoreLib/System.Private.CoreLib.csproj" PrivateAssets="All" Private="false" Aliases="corelib" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="$(SolutionDir)README.md" Pack="true" PackagePath="/" Visible="false" />
+		<PackageReference Include="Microsoft.SourceLink.GitHub" Version="*" PrivateAssets="All" />
+	</ItemGroup>
+
+</Project>

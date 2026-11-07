@@ -5,36 +5,57 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
-      - run: dotnet build PoeRedux.slnx -c Release
-      - run: dotnet run --project PoeAdaptive.Tests -c Release --no-build
-      - run: dotnet publish PoeRedux/PoeRedux.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
-      - name: Check Windows app startup
+          global-json-file: global.json
+      - name: Build, run checks and package with the shared pipeline
+        shell: pwsh
+        run: ./Build.ps1 -Output "$PWD/artifacts/Первичная сборка"
+      - name: Check both Windows main windows
         shell: pwsh
         run: |
-          $appProcess = Start-Process -FilePath (Resolve-Path 'publish/PoeAdaptive.exe') -PassThru
-          try {
-            if (-not $appProcess.WaitForInputIdle(15000)) {
-              throw 'PoeAdaptive did not initialize its window in time.'
-            }
-            Start-Sleep -Seconds 3
-            $appProcess.Refresh()
-            if ($appProcess.HasExited) {
-              throw "PoeAdaptive exited during startup: $($appProcess.ExitCode)"
-            }
-            if ($appProcess.MainWindowHandle -eq 0 -or $appProcess.MainWindowTitle -notlike 'PoE Adaptive*') {
-              throw 'The expected PoeAdaptive main window did not open.'
-            }
-            Write-Host "Opened: $($appProcess.MainWindowTitle)"
+          $result = Get-ChildItem 'artifacts/Первичная сборка' -Directory | Select-Object -First 1
+          foreach ($item in @(@('app/PoeAdaptive.exe', 'PoE Adaptive*'), @('builder/PoeAdaptive.Builder.exe', 'PoeAdaptive Builder*'))) {
+            $process = Start-Process -FilePath (Join-Path $result.FullName $item[0]) -PassThru
+            try {
+              if (-not $process.WaitForInputIdle(20000)) { throw 'Window did not initialize' }
+              Start-Sleep -Seconds 3
+              $process.Refresh()
+              if ($process.HasExited -or $process.MainWindowHandle -eq 0 -or $process.MainWindowTitle -notlike $item[1]) { throw "Expected window missing: $($item[0])" }
+              Write-Host "Opened: $($process.MainWindowTitle)"
+            } finally { if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force } }
           }
-          finally {
-            if (-not $appProcess.HasExited) { Stop-Process -Id $appProcess.Id -Force }
-          }
+      - name: Bootstrap official pinned SDK in an empty user cache
+        shell: pwsh
+        run: |
+          dotnet run --project PoeAdaptive.BuildHost -c Release --no-build -- --bootstrap-sdk --sdk-cache "$PWD/artifacts/SDK cache"
+          if ($LASTEXITCODE -ne 0) { throw 'SDK bootstrap failed' }
+      - name: Self-contained Builder builds again from cached dependencies, with Cyrillic paths
+        shell: pwsh
+        run: |
+          $result = Get-ChildItem 'artifacts/Первичная сборка' -Directory | Select-Object -First 1
+          $start = [System.Diagnostics.ProcessStartInfo]::new((Join-Path $result.FullName 'builder/PoeAdaptive.Builder.exe'))
+          $start.UseShellExecute = $false
+          foreach ($argument in @('--build', '--source', "$PWD", '--output', "$PWD/artifacts/Сборка без сети", '--offline', '--dotnet', "$PWD/artifacts/SDK cache/10.0.403/dotnet.exe")) { $start.ArgumentList.Add($argument) }
+          $process = [System.Diagnostics.Process]::Start($start)
+          $process.WaitForExit()
+          if ($process.ExitCode -ne 0) { throw "Builder failed: $($process.ExitCode)" }
+          $built = Get-ChildItem 'artifacts/Сборка без сети' -Directory | Select-Object -First 1
+          if (-not (Test-Path (Join-Path $built.FullName 'app/PoeAdaptive.exe'))) { throw 'Builder did not create app' }
+      - name: Stage release packages from the tested commit
+        shell: pwsh
+        run: |
+          $result = Get-ChildItem 'artifacts/Первичная сборка' -Directory | Select-Object -First 1
+          New-Item -ItemType Directory -Path release | Out-Null
+          Copy-Item "$($result.FullName)/*.zip" release/
+          Copy-Item "$($result.FullName)/SHA256SUMS.txt" release/
+          Copy-Item "$($result.FullName)/build-info.json" release/
+          $info = Get-Content release/build-info.json -Raw | ConvertFrom-Json
+          if ($info.sourceCommit -ne (git rev-parse HEAD) -or $info.localChanges) { throw 'Source provenance mismatch' }
       - uses: actions/upload-artifact@v4
         with:
           name: PoeAdaptive-win-x64
-          path: publish/
+          path: release/

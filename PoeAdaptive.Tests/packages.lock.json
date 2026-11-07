@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "aianlinb.SystemExtensions": {
+        "type": "Transitive",
+        "resolved": "1.8.0",
+        "contentHash": "IZGei0/D0SzZeKWOYlJBP5GTHWUHQI/uppTYWppKQScxDLxwK88sH2zLSRBmvL5jAnYkYq2Eu9mApoAz9xcqmA=="
+      },
+      "LibGGPK3.LibBundle3": {
+        "type": "Transitive",
+        "resolved": "2.7.5",
+        "contentHash": "O0+Sae/XKbJLmfufU2+/fGUTI9l6j3NVQrRlfJfEyymO5s6uyr7ADglHbc9OY7Ntpb/7hXRCWvdpolEzG/JXzQ==",
+        "dependencies": {
+          "aianlinb.SystemExtensions": "1.8.0"
+        }
+      },
+      "LibGGPK3.LibBundledGGPK3": {
+        "type": "Transitive",
+        "resolved": "2.7.5",
+        "contentHash": "lbtwgtx1gCQ43uipOFrFNzF9U17oqXTAHhpiJMds6Rlr2kRJ3xyju/Kvf3sSDb6aPGsnbcqMR0//vqm3D0cuBg==",
+        "dependencies": {
+          "LibGGPK3.LibBundle3": "2.7.5",
+          "LibGGPK3.LibGGPK3": "2.7.5"
+        }
+      },
+      "LibGGPK3.LibGGPK3": {
+        "type": "Transitive",
+        "resolved": "2.7.5",
+        "contentHash": "3iqtus2ETW7FXp3OSGLXZIR75UE/zjof3ZCGCvAf/x7NkFQuMkxK6pDPwjiGfigWBaW6gDM6obYbLN8FQ//Kyg==",
+        "dependencies": {
+          "aianlinb.SystemExtensions": "1.8.0"
+        }
+      },
+      "poeadaptive.build.core": {
+        "type": "Project"
+      },
+      "poeadaptive.core": {
+        "type": "Project",
+        "dependencies": {
+          "LibGGPK3.LibGGPK3": "[2.7.5, 2.7.5]"
+        }
+      },
+      "poeadaptive.engine": {
+        "type": "Project",
+        "dependencies": {
+          "LibGGPK3.LibBundle3": "[2.7.5, 2.7.5]",
+          "LibGGPK3.LibBundledGGPK3": "[2.7.5, 2.7.5]",
+          "PoeAdaptive.Core": "[1.0.0, )"
+        }
+      }
+    },
+    "net10.0/win-x64": {}
+  }
+}

@@ -6,10 +6,11 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../PoeAdaptive.Core/PoeAdaptive.Core.csproj" />
-    <PackageReference Include="LibGGPK3.LibBundle3" Version="2.7.5" />
+    <PackageReference Include="LibGGPK3.LibBundle3" Version="[2.7.5]" />
+    <PackageReference Include="LibGGPK3.LibBundledGGPK3" Version="[2.7.5]" />
     <Compile Include="../PoeRedux/Patches/**/*.cs" LinkBase="Patches" />
     <Compile Include="../PoeRedux/Patches2/**/*.cs" LinkBase="Patches2" />
     <Compile Include="../PoeRedux/Models/ColorModsOption.cs" Link="Models/ColorModsOption.cs" />
-    <Compile Include="../PoeRedux/Services/AdaptivePatcher.cs" Link="AdaptivePatcher.cs" />
+    <Compile Include="../PoeRedux/Services/*.cs" LinkBase="Services" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<AssemblyVersion>8.0.0.0</AssemblyVersion>
+		<ProduceOnlyReferenceAssembly>true</ProduceOnlyReferenceAssembly>
+		<NoWarn>CS0626,CS8618</NoWarn>
+	</PropertyGroup>
+</Project>

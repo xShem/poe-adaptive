@@ -3,4 +3,8 @@
   <Project Path="PoeAdaptive.Core/PoeAdaptive.Core.csproj" />
   <Project Path="PoeAdaptive.Engine/PoeAdaptive.Engine.csproj" />
   <Project Path="PoeAdaptive.Tests/PoeAdaptive.Tests.csproj" />
+  <Project Path="PoeAdaptive.Build.Core/PoeAdaptive.Build.Core.csproj" />
+  <Project Path="PoeAdaptive.BuildHost/PoeAdaptive.BuildHost.csproj" />
+  <Project Path="PoeAdaptive.Builder/PoeAdaptive.Builder.csproj" />
+  <Project Path="PoeAdaptive.Diagnostics/PoeAdaptive.Diagnostics.csproj" />
 </Solution>
