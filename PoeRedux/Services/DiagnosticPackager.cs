@@ -507,7 +507,7 @@ public sealed class DiagnosticPackager(string dataRoot)
                             $"Included: {group.Count}, checks: {checks.Count}, omissions: {omissions.Count}\n"));
                         foreach (var file in group) Write(zip, file.Path, file.Bytes);
                     }
-                    if (new FileInfo(temp).Length > MaxZip) throw new IOException("Сжатый ZIP превысил 20 МиБ. Экспорт остановлен.");
+                    DiagnosticArchiveValidator.Validate(temp);
                     File.Move(temp, outFile);
                     pathsOut.Add(outFile);
                 }
