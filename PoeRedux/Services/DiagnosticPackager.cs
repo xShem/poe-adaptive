@@ -373,7 +373,7 @@ public sealed class DiagnosticPackager(string dataRoot)
             throw new IOException("Версия ресурсов изменилась во время диагностики. Пакет не опубликован.");
         FileSafety.RequireIdle(i, false);
         var results = prepared?.Report.Results.ToArray() ?? [];
-        var prompt = $"Репозиторий: https://github.com/xShem/poe-adaptive\nПриложение: PoE Adaptive 0.2.0; {i.Game}, {i.Client}\n" +
+        var prompt = $"Репозиторий: https://github.com/xShem/poe-adaptive\nПриложение: PoE Adaptive 0.3.0; {i.Game}, {i.Client}\n" +
             $"Проблемные функции: {string.Join(", ", selected)}\nОжидалось: {options.Expected ?? "(не указано)"}\nФактически: {options.Actual ?? "(не указано)"}\n" +
             "Изучи manifest.json, README-FOR-AI.md, исходные ресурсы в resources/, сравнения в diff/ и отчёты поиска. " +
             "Различай подтверждённые пути, предположительные кандидаты и происхождение каждого файла. " +
@@ -418,7 +418,7 @@ public sealed class DiagnosticPackager(string dataRoot)
                     using (var zip = new ZipArchive(stream, ZipArchiveMode.Create))
                     {
                         var group = parts[part];
-                        var manifest = new DiagnosticManifest(1, packageId, part + 1, parts.Count, "0.2.0",
+                        var manifest = new DiagnosticManifest(1, packageId, part + 1, parts.Count, "0.3.0",
                             SourceCommit, "2.7.5",
                             i.Game.ToString(), i.Client.ToString(), i.Format.ToString(), i.Key, i.BuildId,
                             previous.FirstOrDefault()?.Meta.ResourceVersion, rulesHash, selected,
