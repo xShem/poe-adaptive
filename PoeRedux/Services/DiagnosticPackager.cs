@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using LibBundle3;
@@ -105,6 +106,9 @@ public sealed class DiagnosticPackager(string dataRoot)
     private const int MaxFiles = 160;
     private const int MaxReads = 256;
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+    private static string SourceCommit => typeof(DiagnosticPackager).Assembly
+        .GetCustomAttributes<AssemblyMetadataAttribute>()
+        .FirstOrDefault(a => a.Key == "SourceCommit")?.Value ?? "unknown-local-build";
     private string CacheRoot => Path.Combine(dataRoot, "DiagnosticCache");
     private string PackagesRoot => Path.Combine(dataRoot, "Diagnostics");
     private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
@@ -406,7 +410,7 @@ public sealed class DiagnosticPackager(string dataRoot)
                     {
                         var group = parts[part];
                         var manifest = new DiagnosticManifest(1, packageId, part + 1, parts.Count, "0.2.0",
-                            "not embedded; compare source archive and CI build-info.json", "2.7.5",
+                            SourceCommit, "2.7.5",
                             i.Game.ToString(), i.Client.ToString(), i.Format.ToString(), i.Key, i.BuildId,
                             previous.FirstOrDefault()?.Meta.ResourceVersion, rulesHash, selected,
                             prepared?.Profile, rules.Where(r => r.TargetGame == i.Game && selected.Contains(r.PatchId)).ToArray(),
