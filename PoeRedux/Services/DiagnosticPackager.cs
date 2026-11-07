@@ -32,7 +32,7 @@ public sealed class DiagnosticResourceReader : IDisposable
     private readonly LibBundle3.Index index;
     private readonly IBundleFactory? factory;
     private readonly string root;
-    private DiagnosticResourceReader(string path, ResourceFormat format)
+    private DiagnosticResourceReader(string path, ResourceFormat format, string? fallbackBundleRoot)
     {
         root = Path.GetDirectoryName(path)!;
         source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -50,7 +50,7 @@ public sealed class DiagnosticResourceReader : IDisposable
             }
             else
             {
-                factory = new ReadOnlyExternalFactory(root);
+                factory = new ReadOnlyExternalFactory(root, fallbackBundleRoot);
                 index = new LibBundle3.Index(source, true, true, factory);
             }
         }
@@ -61,7 +61,7 @@ public sealed class DiagnosticResourceReader : IDisposable
             throw;
         }
     }
-    public static DiagnosticResourceReader Open(string path, ResourceFormat format) => new(path, format);
+    public static DiagnosticResourceReader Open(string path, ResourceFormat format, string? fallbackBundleRoot = null) => new(path, format, fallbackBundleRoot);
     public string[] Paths => index.Files.Values.Where(f => f.Path != null).Select(f => f.Path!)
         .Order(StringComparer.OrdinalIgnoreCase).ToArray();
     public bool TryRead(string path, long maxBytes, out byte[]? bytes)
@@ -75,11 +75,15 @@ public sealed class DiagnosticResourceReader : IDisposable
     public int SizeOf(string path) => index.TryGetFile(path, out var record) ? record.Size : -1;
     public void Dispose() { index.Dispose(); ggpk?.Dispose(); source.Dispose(); }
 
-    private sealed class ReadOnlyExternalFactory(string root) : IBundleFactory
+    private sealed class ReadOnlyExternalFactory(string root, string? fallback) : IBundleFactory
     {
-        public Bundle GetBundle(BundleRecord record) => new(
-            new FileStream(IsolatedFactory.SafePath(root, record.Path), FileMode.Open, FileAccess.Read, FileShare.Read),
-            false, record);
+        public Bundle GetBundle(BundleRecord record)
+        {
+            var staged = IsolatedFactory.SafePath(root, record.Path);
+            var path = File.Exists(staged) ? staged :
+                fallback is not null ? IsolatedFactory.SafePath(fallback, record.Path) : staged;
+            return new Bundle(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read), false, record);
+        }
         public Stream CreateBundle(string path) => throw new NotSupportedException("Диагностика не записывает игровые ресурсы.");
         public bool DeleteBundle(string path) => throw new NotSupportedException("Диагностика не удаляет игровые ресурсы.");
     }
