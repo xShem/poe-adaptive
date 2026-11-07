@@ -1,0 +1,43 @@
+<Project>
+	
+	<Target Name="OSVerification" BeforeTargets="BeforeBuild">
+		<Error Condition="$(RuntimeIdentifier) != '' And !$(RuntimeIdentifier.StartsWith('win')) And !$(RuntimeIdentifier.StartsWith('linux')) And !$(RuntimeIdentifier.StartsWith('osx'))" Text="Unsupported operating system: $(RuntimeIdentifier)" />
+	</Target>
+	
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<NoWarn>$(NoWarn);NU1701</NoWarn>
+	</PropertyGroup>
+	
+	<Choose>
+		<When Condition="$(RuntimeIdentifier.StartsWith('win')) Or ($(RuntimeIdentifier) == '' And $([MSBuild]::IsOSPlatform('Windows')))">
+			<PropertyGroup>
+				<DefineConstants>Windows;$(DefineConstants)</DefineConstants>
+				<TargetFramework Condition="!$(TargetFramework.EndsWith('-windows'))">$(TargetFramework)-windows</TargetFramework>
+			</PropertyGroup>
+			<ItemGroup>
+				<PackageReference Include="Eto.Platform.Wpf" Version="*" />
+			</ItemGroup>
+		</When>
+		
+		<When Condition="$(RuntimeIdentifier.StartsWith('osx')) Or ($(RuntimeIdentifier) == '' And $([MSBuild]::IsOSPlatform('OSX')))">
+			<PropertyGroup>
+				<RuntimeIdentifiers Condition="$(RuntimeIdentifiers) == ''">$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)</RuntimeIdentifiers>
+				<DefineConstants>Mac;$(DefineConstants)</DefineConstants>
+			</PropertyGroup>
+			<ItemGroup>
+				<PackageReference Include="Eto.Platform.Mac64" Version="*" />
+			</ItemGroup>
+		</When>
+		
+		<When Condition="$(RuntimeIdentifier.StartsWith('linux')) Or ($(RuntimeIdentifier) == '' And $([MSBuild]::IsOSPlatform('Linux')))">
+			<PropertyGroup>
+				<DefineConstants>Linux;$(DefineConstants)</DefineConstants>
+			</PropertyGroup>
+			<ItemGroup>
+				<PackageReference Include="Eto.Platform.Gtk" Version="*" />
+			</ItemGroup>
+		</When>
+	</Choose>
+	
+</Project>

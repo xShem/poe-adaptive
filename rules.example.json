@@ -1,0 +1,13 @@
+[
+  {
+    "PatchId": "Rain",
+    "AppId": "2694490",
+    "PathPrefix": "metadata/environmentsettings/",
+    "Extension": ".env",
+    "Pattern": "(\"rain_intensity\"\\s*:\\s*)-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?",
+    "Replacement": "${1}0.0",
+    "MinMatches": 1,
+    "MaxMatches": 100000,
+    "EncodingName": "utf-16"
+  }
+]

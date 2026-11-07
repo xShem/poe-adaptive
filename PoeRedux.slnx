@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="PoeRedux/PoeRedux.csproj" />
+  <Project Path="PoeAdaptive.Core/PoeAdaptive.Core.csproj" />
+  <Project Path="PoeAdaptive.Engine/PoeAdaptive.Engine.csproj" />
+  <Project Path="PoeAdaptive.Tests/PoeAdaptive.Tests.csproj" />
+</Solution>

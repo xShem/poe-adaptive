@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../PoeAdaptive.Core/PoeAdaptive.Core.csproj" />
+    <PackageReference Include="LibGGPK3.LibBundle3" Version="2.7.5" />
+    <Compile Include="../PoeRedux/Patches/**/*.cs" LinkBase="Patches" />
+    <Compile Include="../PoeRedux/Patches2/**/*.cs" LinkBase="Patches2" />
+    <Compile Include="../PoeRedux/Models/ColorModsOption.cs" Link="Models/ColorModsOption.cs" />
+    <Compile Include="../PoeRedux/Services/AdaptivePatcher.cs" Link="AdaptivePatcher.cs" />
+  </ItemGroup>
+</Project>

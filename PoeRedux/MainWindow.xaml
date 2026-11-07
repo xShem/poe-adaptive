@@ -1,0 +1,97 @@
+<Window x:Class="PoeRedux.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PoE Adaptive · Steam" Height="800" Width="1040" MinHeight="650" MinWidth="900"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource DarkBackground}">
+    <Grid x:Name="MainGrid" Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="190"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <DockPanel Margin="0,0,0,16">
+            <TextBlock Text="PoE Adaptive" FontSize="24" FontWeight="Bold" Foreground="{StaticResource DarkTextPrimary}"/>
+            <TextBlock Text="Обе игры · Steam · предварительный анализ" Margin="18,0,0,0" VerticalAlignment="Center"
+                       Foreground="{StaticResource DarkTextSecondary}"/>
+        </DockPanel>
+        <StackPanel Grid.Row="1" Margin="0,0,0,12">
+            <DockPanel Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right" Content="Найти в Steam" Click="FindSteam_Click" Padding="12,6"/>
+                <Button DockPanel.Dock="Right" Content="Выбрать индекс…" Click="Browse_Click" Padding="12,6"/>
+                <ComboBox x:Name="GameSelector" DisplayMemberPath="Title" SelectionChanged="GameSelector_SelectionChanged"
+                          MinWidth="280" Style="{StaticResource DarkComboBox}"/>
+            </DockPanel>
+            <TextBlock x:Name="InstallText" Text="Найдите игру в Steam или выберите Bundles2/_.index.bin."
+                       TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource DarkTextSecondary}"/>
+        </StackPanel>
+        <GroupBox Grid.Row="2" Header="Функции" Margin="0,0,0,10">
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <DockPanel Margin="0,0,0,8">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                        <Button Content="Выбрать все" Click="SelectAll_Click" Style="{StaticResource SecondaryButton}"/>
+                        <Button Content="Снять выбор" Click="SelectNone_Click" Style="{StaticResource SecondaryButton}"/>
+                        <Button Content="Цвета модов" Click="Colors_Click" Style="{StaticResource SecondaryButton}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="Камера" VerticalAlignment="Center" Foreground="{StaticResource DarkTextPrimary}" Margin="10,0"/>
+                        <Slider x:Name="ZoomSlider" Width="150" Minimum="1.2" Maximum="2.4" Value="2.4" TickFrequency="0.2"
+                                IsSnapToTickEnabled="True" ValueChanged="Zoom_ValueChanged" Style="{StaticResource RoundGreySlider}"/>
+                        <TextBlock Text="{Binding ElementName=ZoomSlider, Path=Value, StringFormat=F1}" Width="35" Margin="8,0"
+                                   VerticalAlignment="Center" Foreground="{StaticResource DarkTextPrimary}"/>
+                    </StackPanel>
+                </DockPanel>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Style="{StaticResource DarkScrollViewer}">
+                    <ItemsControl x:Name="PatchesItemsControl">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource DarkSurface}" Padding="8" Margin="2" CornerRadius="4">
+                                    <CheckBox IsChecked="{Binding IsSelected}" Foreground="{StaticResource DarkTextPrimary}">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding Description}" FontSize="10" TextWrapping="Wrap"
+                                                       MaxWidth="380" Foreground="{StaticResource DarkTextSecondary}"/>
+                                        </StackPanel>
+                                    </CheckBox>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </GroupBox>
+        <GroupBox Grid.Row="3" Header="Результат анализа" Margin="0,0,0,10">
+            <ListView x:Name="ResultsList" Background="{StaticResource DarkSurface}" Foreground="{StaticResource DarkTextPrimary}"
+                      BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="Функция" DisplayMemberBinding="{Binding Name}" Width="280"/>
+                        <GridViewColumn Header="Изменённых файлов" DisplayMemberBinding="{Binding ChangedFiles}" Width="140"/>
+                        <GridViewColumn Header="Результат" DisplayMemberBinding="{Binding Status}" Width="480"/>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+        </GroupBox>
+        <CheckBox Grid.Row="4" x:Name="AutoApplyBox" Margin="3,0,0,12" Foreground="{StaticResource DarkTextPrimary}"
+                  Content="Применять сохранённый профиль после обновления Steam, пока это окно открыто"
+                  Click="AutoApply_Click"/>
+        <Grid Grid.Row="5">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <ProgressBar x:Name="Progress" Height="4" IsIndeterminate="True" Visibility="Collapsed" Margin="0,0,0,10"/>
+            <DockPanel Grid.Row="1">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Данные" Click="OpenData_Click" Style="{StaticResource SecondaryButton}"/>
+                    <Button Content="Восстановить" Click="Restore_Click" Style="{StaticResource SecondaryButton}"/>
+                    <Button Content="Анализ" Click="Analyze_Click"/>
+                    <Button x:Name="ApplyButton" Content="Применить" Click="Apply_Click" IsEnabled="False"/>
+                </StackPanel>
+                <TextBlock x:Name="StatusText" Text="Готово к анализу." TextWrapping="Wrap" MaxWidth="380"
+                           Foreground="{StaticResource DarkTextSecondary}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            </DockPanel>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,112 @@
+<Project>
+
+	<PropertyGroup>
+		<PublishAOT>true</PublishAOT>
+		<IlcInvariantGlobalization>true</IlcInvariantGlobalization>
+		<!--IlcOptimizationPreference>Speed</IlcOptimizationPreference-->
+		<IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+		<DebuggerSupport>false</DebuggerSupport>
+		<EventSourceSupport>false</EventSourceSupport>
+		<HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+		<MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+		<StackTraceSupport>false</StackTraceSupport>
+		<UseNativeHttpHandler>true</UseNativeHttpHandler>
+		
+		<ObjCopyName Condition="'$(RuntimeIdentifier)' == 'linux-arm64' AND $([MSBuild]::IsOsPlatform('Linux')) AND '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' != 'Arm64'">aarch64-linux-gnu-objcopy</ObjCopyName>
+		<ObjCopyName Condition="'$(RuntimeIdentifier)' == 'linux-x64' AND $([MSBuild]::IsOsPlatform('Linux')) AND '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' != 'X64'">x86_64-linux-gnu-objcopy</ObjCopyName>
+	</PropertyGroup>
+	
+	<ItemGroup>
+		<RuntimeHostConfigurationOption Include="Switch.System.Reflection.Assembly.SimulatedCallingAssembly" Value="true" />
+		<RuntimeHostConfigurationOption Include="Switch.System.Reflection.Assembly.SimulatedLocationInBaseDirectory" Value="true" />
+		<RuntimeHostConfigurationOption Include="Switch.System.Reflection.Disabled.DoNotThrowForNames" Value="true" />
+		<RuntimeHostConfigurationOption Include="Switch.System.Reflection.Disabled.DoNotThrowForAssembly" Value="true" />
+	</ItemGroup>
+
+	<!-- Remove the following if you don't have the static libraries (And then you will need oo2core.dll/liboo2core.so/liboo2core.dylib at runtime) -->
+	<ItemGroup>
+		<DirectPInvoke Include="oo2core" />
+	</ItemGroup>
+	<Choose>
+		<When Condition="$(RuntimeIdentifier.StartsWith('win'))">
+			<Choose>
+				<When Condition="'$(RuntimeIdentifier)' == 'win10-x64'">
+					<ItemGroup>
+						<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/oo2core_winuwp64.lib" />
+					</ItemGroup>
+				</When>
+				<When Condition="$(RuntimeIdentifier.Contains('x64'))">
+					<ItemGroup>
+						<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/oo2core_win64.lib" />
+					</ItemGroup>
+				</When>
+				<When Condition="$(RuntimeIdentifier.Contains('arm64'))">
+					<ItemGroup>
+						<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/oo2core_winuwparm64.lib" />
+					</ItemGroup>
+				</When>
+				<When Condition="$(RuntimeIdentifier.Contains('x86'))">
+					<ItemGroup>
+						<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/oo2core_win32.lib" />
+					</ItemGroup>
+				</When>
+			</Choose>
+		</When>
+		<When Condition="$(RuntimeIdentifier.StartsWith('linux'))">
+			<ItemGroup>
+				<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2corelinux64.a" Condition="$(RuntimeIdentifier.Contains('x64'))" />
+				<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2corelinuxarm64.a" Condition="$(RuntimeIdentifier.Contains('arm64'))" />
+			</ItemGroup>
+		</When>
+		<When Condition="$(RuntimeIdentifier.StartsWith('osx'))">
+			<ItemGroup>
+				<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coremac64.a" Condition="$(RuntimeIdentifier.Contains('64'))" />
+			</ItemGroup>
+		</When>
+		<When Condition="$(RuntimeIdentifier.StartsWith('android'))">
+			<Choose>
+				<When Condition="$(RuntimeIdentifier.Contains('arm64'))">
+					<ItemGroup>
+						<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coreandroidarm64.a" />
+					</ItemGroup>
+				</When>
+				<When Condition="$(RuntimeIdentifier.Contains('arm'))">
+					<ItemGroup>
+						<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coreandroidarm.a" />
+					</ItemGroup>
+				</When>
+				<When Condition="$(RuntimeIdentifier.Contains('x64'))">
+					<ItemGroup>
+						<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coreandroid64.a" />
+					</ItemGroup>
+				</When>
+				<When Condition="$(RuntimeIdentifier.Contains('x86'))">
+					<ItemGroup>
+						<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coreandroid.a" />
+					</ItemGroup>
+				</When>
+			</Choose>
+		</When>
+		<When Condition="$(RuntimeIdentifier.StartsWith('iossimulator'))">
+			<ItemGroup>
+				<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coreios.sim.a" />
+			</ItemGroup>
+		</When>
+		<When Condition="$(RuntimeIdentifier.StartsWith('ios'))">
+			<ItemGroup>
+				<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coreios.a" />
+			</ItemGroup>
+		</When>
+		<When Condition="$(RuntimeIdentifier.StartsWith('tvossimulator'))">
+			<ItemGroup>
+				<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coretvos.sim.a" />
+			</ItemGroup>
+		</When>
+		<When Condition="$(RuntimeIdentifier.StartsWith('tvos'))">
+			<ItemGroup>
+				<NativeLibrary Include="$(SolutionDir)LibBundle3/oo2core/liboo2coretvos.a" />
+			</ItemGroup>
+		</When>
+	</Choose>
+	
+</Project>
