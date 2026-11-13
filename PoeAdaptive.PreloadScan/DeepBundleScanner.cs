@@ -277,6 +277,10 @@ public static class DeepBundleScanner
     }
 
     /// <summary>Pure evidence predicate used by regression tests; never equates generic environment assets with Delirium.</summary>
+    /// <summary>Shared exact indicator vocabulary for structural inventories and sampled deep scans.</summary>
+    public static (string Feature, string Indicator)[] KnownIndicators() =>
+        Rules.SelectMany(rule => rule.Indicators.Select(sign => (rule.Name, sign))).ToArray();
+
     public static bool HasFeatureIndicator(string feature, ReadOnlySpan<byte> bytes)
     {
         var rule = Rules.FirstOrDefault(r => r.Name.Equals(feature, StringComparison.Ordinal));
