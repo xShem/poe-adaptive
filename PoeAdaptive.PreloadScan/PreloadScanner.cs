@@ -106,6 +106,13 @@ public static class PreloadScanner
                     warnings.Add("Превышена максимальная глубина каталогов.");
                     continue;
                 }
+                // The stack itself is bounded too: malformed archives may contain enormous directories.
+                if (stack.Count + directory.Count > MaxVisitedNodes)
+                {
+                    truncated = true;
+                    warnings.Add("Слишком большой каталог: дополнительные записи не добавлены в очередь.");
+                    continue;
+                }
                 // Reverse for deterministic natural directory order with a LIFO stack.
                 for (var i = directory.Count - 1; i >= 0; --i)
                     stack.Push((directory[i], depth + 1));
