@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../PoeAdaptive.Engine/PoeAdaptive.Engine.csproj" />
-  <ProjectReference Include="../PoeAdaptive.Build.Core/PoeAdaptive.Build.Core.csproj" /></ItemGroup>
+  <ProjectReference Include="../PoeAdaptive.Build.Core/PoeAdaptive.Build.Core.csproj" />
+    <ProjectReference Include="../PoeAdaptive.PreloadScan/PoeAdaptive.PreloadScan.csproj" /></ItemGroup>
 </Project>
