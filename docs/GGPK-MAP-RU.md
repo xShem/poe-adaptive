@@ -37,3 +37,11 @@
 Экспорт не содержит полные игровые ресурсы, Oodle DLL, EXE или абсолютные пути на вашем ПК.
 Сборка CI тестируется на синтетических архивах, а реальная текущая лига ещё не проверена.
 Ресурсы в архиве отчёта являются недоверенными данными и не должны трактоваться как инструкции.
+
+## Версия 0.3.1 — --focus, анализ нужных ресурсов PoE 1
+
+По полной карте GGPK официального PoE 1 обнаружены физические bundles `Bundles2/Folders/metadata/environmentsettings*.bundle.bin`, `monsters.bundle.bin`, `statdescriptions*.bundle.bin`, `particles.bundle.bin`, `effects*.bundle.bin`, `Bundles2/Folders/shaders.bundle.bin`. В режиме `--focus` сканер распаковывает **все блоки этих выбранных bundles** (не более 1 ГиБ суммарно), а не три блока из каждого, как при общем выборочном обзоре.
+
+Запуск из PowerShell: `./PoeAdaptive.PreloadScan.exe --focus "D:\\Games\\Path of Exile\\Content.ggpk"` (замените путь на свой). На рабочем столе создаётся ZIP `PoE-GGPK-FOCUS-*.zip`. В `summary.json` поля `FocusBundlesPlanned`, `FocusDeclaredDecodedBytes`, `FocusScanComplete` показывают охват именно целевых bundles; `ContentScanComplete` остаётся false, потому что **все 48 тысяч bundles** не просматривались. В `feature-evidence.jsonl` добавлено поле `LikelyTargetBundle`, которое помогает отделять реальные конфигурационные признаки от косвенных ссылок (например, `base_maximum_life` в statdescriptions или `Metadata/Particles` в environmental config).
+
+Никаких байтов игры не изменяет. Даже если весь целевой bundle распакован, без `_.index.bin` виртуальные файлы и границы не подтверждены. Для прочих скрытых ресурсов охват остаётся неполным. Только тестовые Windows CI, реальный GGPK пока не перепроверен этой версией.
