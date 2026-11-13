@@ -112,6 +112,44 @@ static class AdditionalChecks
             }
             Check(BuildStore.HashFile(noIndex) == checksum);
         });
+        test("Preload scanner finds direct feature text without Bundles2 and preserves GGPK", () =>
+        {
+            var archivePath = Path.Combine(Area("preload direct"), "Content.ggpk");
+            using (var output = File.Create(archivePath))
+            using (var writer = new BinaryWriter(output))
+            {
+                writer.Write(28); writer.Write(0x4B504747); writer.Write(3); writer.Write(28L); writer.Write(0L);
+                writer.Write(50); writer.Write(0x52494450); writer.Write(1); writer.Write(0);
+                writer.Write(new byte[32]); writer.Write((short)0);
+            }
+            using (var archive = new GGPK(archivePath))
+            {
+                archive.Root.FindOrAddFile("metadata/characters/character.ot", out var camera);
+                camera.Write(Encoding.Unicode.GetBytes("on_initial_position_set = {CreateCameraZoomNode(5000.0, 5000.0, 2.4);}"));
+                archive.Root.FindOrAddFile("metadata/environmentsettings/test.env", out var env);
+                env.Write(Encoding.Unicode.GetBytes("{\\\"rain_intensity\\\": 2.0, \\\"clouds_intensity\\\": 0.5}"));
+                archive.Root.FindOrAddFile("metadata/images/unrelated.bin", out var binary);
+                binary.Write([0, 1, 2, 3, 4]);
+            }
+            var checksum = BuildStore.HashFile(archivePath);
+            var result = PoeAdaptive.PreloadScan.PreloadScanner.Scan(archivePath);
+            Check(result.GgpkVersion == 3 && !result.Bundles2IndexPresent);
+            Check(result.Features.Single(f => f.Feature == "Camera").TextMatches > 0);
+            Check(result.Features.Single(f => f.Feature == "Rain").TextMatches > 0);
+            Check(result.Features.Single(f => f.Feature == "Clouds").TextMatches > 0);
+            Check(result.Features.Single(f => f.Feature == "Minimap").TextMatches == 0);
+            Check(result.Warnings.Any(w => w.Contains("не декодируется")));
+            Check(BuildStore.HashFile(archivePath) == checksum);
+        });
+        test("Preload scanner refuses non GGPK without modifying it", () =>
+        {
+            var path = Path.Combine(Area("invalid preload"), "Content.ggpk");
+            File.WriteAllText(path, "not a ggpk");
+            var before = BuildStore.HashFile(path);
+            Throws<InvalidDataException>(() => PoeAdaptive.PreloadScan.PreloadScanner.Scan(path));
+            Check(BuildStore.HashFile(path) == before);
+            Check(PoeAdaptive.PreloadScan.PreloadScanner.MaxSampleBytes <= 24 * 1024 * 1024);
+        });
         test("Real GGPK record reader is byte-preserving with explicit read-only stream", () =>
         {
             var before = BuildStore.HashFile(container);
