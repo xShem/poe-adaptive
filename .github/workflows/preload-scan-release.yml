@@ -30,10 +30,10 @@ jobs:
           if (-not (Test-Path scanner/PoeAdaptive.PreloadScan.exe)) { throw "No scanner executable" }
           Copy-Item docs/PRELOAD-SCAN-RU.md scanner/README-RU.md
           New-Item -ItemType Directory -Path package | Out-Null
-          Compress-Archive -Path scanner/* -DestinationPath package/PoeAdaptive-PreloadScan-0.1.0-win-x64.zip
-          $sha = (Get-FileHash package/PoeAdaptive-PreloadScan-0.1.0-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          Set-Content package/SHA256SUMS.txt "$sha  PoeAdaptive-PreloadScan-0.1.0-win-x64.zip"
-          [ordered]@{ schemaVersion = 1; version = "0.1.0"; sourceCommit = "$env:GITHUB_SHA"; syntheticTestsPassed = $true; realClientTested = $false; decodesOodleBundles = $false } |
+          Compress-Archive -Path scanner/* -DestinationPath package/PoeAdaptive-PreloadScan-0.1.1-win-x64.zip
+          $sha = (Get-FileHash package/PoeAdaptive-PreloadScan-0.1.1-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content package/SHA256SUMS.txt "$sha  PoeAdaptive-PreloadScan-0.1.1-win-x64.zip"
+          [ordered]@{ schemaVersion = 1; version = "0.1.1"; sourceCommit = "$env:GITHUB_SHA"; syntheticTestsPassed = $true; realClientTested = $false; decodesOodleBundles = $false } |
             ConvertTo-Json | Set-Content package/build-info.json
       - uses: actions/upload-artifact@v4
         with:
@@ -62,7 +62,7 @@ jobs:
           from pathlib import Path
           import hashlib, json, os, zipfile
           root = Path("package")
-          name = "PoeAdaptive-PreloadScan-0.1.0-win-x64.zip"
+          name = "PoeAdaptive-PreloadScan-0.1.1-win-x64.zip"
           sha = hashlib.sha256((root/name).read_bytes()).hexdigest()
           assert (root/"SHA256SUMS.txt").read_text().strip() == sha + "  " + name
           info = json.loads((root/"build-info.json").read_text(encoding="utf-8-sig"))
@@ -71,9 +71,9 @@ jobs:
               assert archive.testzip() is None
               assert {"PoeAdaptive.PreloadScan.exe", "README-RU.md"}.issubset(archive.namelist())
           PY
-          tag="preloadscan-v0.1.0"
+          tag="preloadscan-v0.1.1"
           if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
             echo "Release already exists; will not overwrite"
             exit 1
           fi
-          gh release create "$tag" --repo "$GH_REPO" --target "$GITHUB_SHA"             --title "PoE Adaptive PreloadScan 0.1.0 - GGPK preload diagnostic" --prerelease             --notes "Standalone Windows x64 tool: drag Content.ggpk onto PoeAdaptive.PreloadScan.exe. Reports file/text clues without modifying GGPK. Does not decompress Oodle bundles. Synthetic tests only, current league compatibility not established."             package/PoeAdaptive-PreloadScan-0.1.0-win-x64.zip package/SHA256SUMS.txt package/build-info.json
+          gh release create "$tag" --repo "$GH_REPO" --target "$GITHUB_SHA"             --title "PoE Adaptive PreloadScan 0.1.1 - GGPK preload diagnostic" --prerelease             --notes "Standalone Windows x64 tool: drag Content.ggpk onto PoeAdaptive.PreloadScan.exe. Reports file/text clues without modifying GGPK. Does not decompress Oodle bundles. Synthetic tests only, current league compatibility not established."             package/PoeAdaptive-PreloadScan-0.1.1-win-x64.zip package/SHA256SUMS.txt package/build-info.json
