@@ -181,6 +181,7 @@ static class AdditionalChecks
             using var doc = JsonDocument.Parse(line);
             Check(doc.RootElement.GetProperty("HeaderValid").GetBoolean());
             Check(doc.RootElement.GetProperty("ChunkCount").GetInt32() == 1);
+            Check(doc.RootElement.GetProperty("ChunkCompressedSizes")[0].GetInt32() == 4);
             Check(doc.RootElement.GetProperty("VirtualFilesListed").GetBoolean() == false);
             Check(BuildStore.HashFile(source) == before);
         });
