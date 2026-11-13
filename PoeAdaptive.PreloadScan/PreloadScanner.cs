@@ -8,11 +8,15 @@ namespace PoeAdaptive.PreloadScan;
 public sealed record ScanEvidence(string Kind, string ArchivePath, string Indicator, string? Excerpt, bool PartialRead);
 public sealed record FeatureFinding(string Feature, string Verdict, int TextMatches, int PathCandidates,
     ScanEvidence[] Evidence);
+public sealed record ScanFileType(string Type, long Files, long Bytes);
+public sealed record ScanRootGroup(string Root, long Files, long Bytes);
 public sealed record PreloadReport(int SchemaVersion, string ScannerVersion, DateTimeOffset CheckedUtc,
     string FileName, long FileSize, uint GgpkVersion, bool Bundles2Present,
     bool Bundles2IndexPresent, string[] RootEntries, long NodesVisited, long DirectFilesFound,
     int DirectFilesSampled, long BytesSampled, bool Truncated,
-    FeatureFinding[] Features, string[] Warnings, string Summary);
+    FeatureFinding[] Features, ScanFileType[] FileTypes, ScanRootGroup[] RootGroups,
+    long BundleFilesFound, long TextFileCandidates, string[] IndexCandidates,
+    string[] Warnings, string Summary);
 
 /// <summary>
 /// A bounded, strictly read-only search of ordinary GGPK directory files.
@@ -83,6 +87,10 @@ public static class PreloadScanner
         var pathCounts = Rules.ToDictionary(r => r.Name, _ => 0, StringComparer.Ordinal);
         var candidates = new List<Candidate>();
         var warnings = new List<string>();
+        var fileTypes = new Dictionary<string, (long Count, long Bytes)>(StringComparer.OrdinalIgnoreCase);
+        var rootGroups = new Dictionary<string, (long Count, long Bytes)>(StringComparer.OrdinalIgnoreCase);
+        var indexCandidates = new List<string>();
+        long bundleFileCount = 0, eligibleTextCount = 0;
         long visited = 0, totalFiles = 0;
         bool truncated = false;
         var stack = new Stack<(TreeNode Node, int Depth)>();
@@ -122,10 +130,26 @@ public static class PreloadScanner
             totalFiles++;
             var fullPath = file.GetPath().Replace('\\', '/');
             var relative = Safe(fullPath, 260);
+            var type = fullPath.EndsWith(".bundle.bin", StringComparison.OrdinalIgnoreCase)
+                ? ".bundle.bin" : Path.GetExtension(fullPath);
+            if (string.IsNullOrEmpty(type)) type = "(no extension)";
+            var previousType = fileTypes.GetValueOrDefault(type);
+            fileTypes[type] = (previousType.Count + 1, previousType.Bytes + file.DataLength);
+            var slash = fullPath.IndexOf('/');
+            var root = slash < 0 ? "(root)" : fullPath[..slash] + "/";
+            var previousGroup = rootGroups.GetValueOrDefault(root);
+            rootGroups[root] = (previousGroup.Count + 1, previousGroup.Bytes + file.DataLength);
+            if (type.Equals(".bundle.bin", StringComparison.OrdinalIgnoreCase)) bundleFileCount++;
+            if (file.Name.Equals("_.index.bin", StringComparison.OrdinalIgnoreCase)
+                || file.Name.Equals("index.bin", StringComparison.OrdinalIgnoreCase))
+            {
+                if (indexCandidates.Count < 20) indexCandidates.Add(relative);
+            }
             foreach (var rule in Rules)
             {
-                var pathIndicator = rule.PathHints.FirstOrDefault(h =>
-                    fullPath.Contains(h, StringComparison.OrdinalIgnoreCase));
+                if (!rule.Extensions.Any(ext => fullPath.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                    continue; // A compressed .bundle.bin is never evidence that the patch code exists.
+                var pathIndicator = rule.PathHints.FirstOrDefault(h => MatchesPathHint(fullPath, h));
                 if (pathIndicator is null) continue;
                 pathCounts[rule.Name]++;
                 if (evidence[rule.Name].Count < MaxEvidencePerFeature)
@@ -133,7 +157,8 @@ public static class PreloadScanner
             }
             if (ScriptFiles.Any(ext => fullPath.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
             {
-                var priority = Rules.Any(r => r.PathHints.Any(h => fullPath.Contains(h, StringComparison.OrdinalIgnoreCase)))
+                eligibleTextCount++;
+                var priority = Rules.Any(r => r.PathHints.Any(h => MatchesPathHint(fullPath, h)))
                     ? 2 : 1;
                 // Do not accumulate an unlimited list of files from a huge preload.
                 if (candidates.Count < 12_000) candidates.Add(new(file, relative, priority));
@@ -188,6 +213,10 @@ public static class PreloadScanner
             warnings.Add("Достигнут предел чтения: 512 файлов или 24 МиБ.");
         if (!hasBundleIndex)
             warnings.Add("Bundles2/_.index.bin не найден. Это не доказательство отсутствия данных будущей лиги.");
+        if (eligibleTextCount == 0)
+            warnings.Add("Нет ни одного прямого файла с проверяемым текстовым расширением; проверка содержимого функций не проводилась.");
+        if (bundleFileCount > 0)
+            warnings.Add("Найдены контейнеры .bundle.bin (" + bundleFileCount + "), но их содержимое не расшифровывалось и не распаковывалось.");
         warnings.Add("Содержимое упакованных bundles и Oodle не декодируется: совпадения относятся только к обычным файлам каталога GGPK.");
         warnings.Add("Совпадение названия файла или текстового индикатора НЕ доказывает работу патча после релиза.");
         if (source.Length != originalLength || File.GetLastWriteTimeUtc(path) != originalTime)
@@ -202,11 +231,34 @@ public static class PreloadScanner
                 t, p, evidence[rule.Name].ToArray());
         }).ToArray();
 
-        return new(1, "0.1.0", DateTimeOffset.UtcNow, Path.GetFileName(path),
+        var types = fileTypes.Select(kv => new ScanFileType(kv.Key, kv.Value.Count, kv.Value.Bytes))
+            .OrderByDescending(v => v.Files).ThenBy(v => v.Type, StringComparer.OrdinalIgnoreCase)
+            .Take(20).ToArray();
+        var groups = rootGroups.Select(kv => new ScanRootGroup(kv.Key, kv.Value.Count, kv.Value.Bytes))
+            .OrderByDescending(v => v.Files).ThenBy(v => v.Root, StringComparer.OrdinalIgnoreCase)
+            .Take(16).ToArray();
+        return new(2, "0.1.1", DateTimeOffset.UtcNow, Path.GetFileName(path),
             originalLength, version, bundleRoot is not null, hasBundleIndex, rootNames,
             visited, totalFiles, sampled, sampledBytes, truncated, features,
+            types, groups, bundleFileCount, eligibleTextCount, indexCandidates.ToArray(),
             warnings.Distinct().ToArray(), "Поиск признаков в файлах GGPK, не проверка совместимости патчей. " +
                 "Отсутствие совпадений не означает отсутствия нужного кода в упакованных данных.");
+    }
+
+    /// <summary>Hints must begin at a path-segment boundary; cachedhlslshaders/ is not shaders/.</summary>
+    public static bool MatchesPathHint(string path, string hint)
+    {
+        if (string.IsNullOrEmpty(hint)) return false;
+        var index = path.IndexOf(hint, StringComparison.OrdinalIgnoreCase);
+        while (index >= 0)
+        {
+            var before = index == 0 || path[index - 1] == '/';
+            var end = index + hint.Length;
+            var after = hint.EndsWith('/') || end == path.Length || path[end] == '/';
+            if (before && after) return true;
+            index = path.IndexOf(hint, index + 1, StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
     }
 
     private static string? DecodeText(ReadOnlySpan<byte> data)
