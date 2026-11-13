@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
@@ -14,6 +15,7 @@ public sealed record MapScanStats(
     bool Bundles2Found, bool RequiredIndexFound,
     long PhysicalFiles, long PhysicalDirectories, long NodesSeen, bool PhysicalTraversalComplete,
     long BundleRecords, long BundleHeadersValid, long BundleHeadersInvalid,
+    long BundleCompressedBytes, long BundleDeclaredDecodedBytes, string[] IndexLikePaths,
     MapMode Mode, long ContentBundlesScanned, long ContentChunksScanned, long ContentBytesDecoded,
     bool ContentScanComplete, string OodleFileName, string OodleSha256,
     long FeatureSignalsFound, long AssetReferencesFound, string[] Warnings,
@@ -145,6 +147,7 @@ public static class GgpkMapExporter
                 cancel.ThrowIfCancellationRequested();
                 BundleEnvelopeInfo? envelope = null;
                 bool valid = false;
+                int[]? chunkSizes = null;
                 string reason = "";
                 try
                 {
@@ -158,7 +161,13 @@ public static class GgpkMapExporter
                             var chunkTable = new byte[envelope.ChunkCount * 4];
                             item.File.Read(chunkTable, 60);
                             valid = DeepBundleScanner.ValidateChunkLengths(chunkTable, envelope);
-                            if (!valid) reason = "chunk-table-invalid";
+                            if (valid)
+                            {
+                                chunkSizes = new int[envelope.ChunkCount];
+                                for (var i = 0; i < chunkSizes.Length; i++)
+                                    chunkSizes[i] = BinaryPrimitives.ReadInt32LittleEndian(chunkTable.AsSpan(i * 4, 4));
+                            }
+                            else reason = "chunk-table-invalid";
                         }
                         else reason = "unsupported-envelope";
                     }
@@ -185,6 +194,7 @@ public static class GgpkMapExporter
                     ChunkCount = envelope?.ChunkCount,
                     CompressedBytes = envelope?.CompressedSize,
                     DecodedBytes = envelope?.UncompressedSize,
+                    ChunkCompressedSizes = chunkSizes,
                     VirtualFilesListed = false
                 });
             }
@@ -273,9 +283,14 @@ public static class GgpkMapExporter
         if (input.Length != initialLength || File.GetLastWriteTimeUtc(path) != initialWrite)
             throw new IOException("GGPK изменился за время сканирования; архив отчёта не опубликован.");
 
+        var indexLike = fileList.Where(f =>
+                Path.GetFileName(f.Path).Equals("_.index.bin", StringComparison.OrdinalIgnoreCase) ||
+                Path.GetFileName(f.Path).Equals("index.bin", StringComparison.OrdinalIgnoreCase))
+            .Select(f => f.Path).Order(StringComparer.OrdinalIgnoreCase).Take(32).ToArray();
         var summary = new MapScanStats(1, "0.3.0", Path.GetFileName(path), initialLength, ggpk.Version,
             root["Bundles2"] is DirectoryRecord, indexExists, fileList.Count, directories.Count,
             nodes, complete, bundleList.Count, validBundleList.Count, invalid,
+            encodedBytes, decodedBytesTotal, indexLike,
             mode, scannedBundles, scannedChunks, decompressed, completeContent,
             oodleName, oodleHash, signals, references, warnings.ToArray(),
             "Full PHYSICAL GGPK catalogue only. Without the index, compressed virtual game files cannot be listed reliably.");
