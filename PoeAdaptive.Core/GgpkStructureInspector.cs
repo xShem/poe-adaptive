@@ -51,7 +51,7 @@ public static class GgpkStructureInspector
         var bundles = root["Bundles2"] as DirectoryRecord;
         var index = bundles?["_.index.bin"] as FileRecord;
         var rootEntries = Names(root);
-        var bundleEntries = bundles is null ? [] : Names(bundles);
+        string[] bundleEntries = bundles is null ? [] : Names(bundles);
         var candidates = new List<string>();
         // Deliberately shallow: only root, root directories and one more level.
         // A candidate is a clue for diagnosis, NEVER an alternative patch target.
