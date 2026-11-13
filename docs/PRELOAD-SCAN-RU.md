@@ -4,7 +4,7 @@
 
 ## Как запустить
 
-1. Закройте игру и дождитесь завершения предзагрузки. Скачайте `PoeAdaptive-PreloadScan-0.1.0-win-x64.zip` из отдельного тестового релиза GitHub.
+1. Закройте игру и дождитесь завершения предзагрузки. Скачайте `PoeAdaptive-PreloadScan-0.1.1-win-x64.zip` из отдельного тестового релиза GitHub.
 2. Распакуйте ZIP в любую папку **вне каталога игры**.
 3. Перетащите `Content.ggpk` на `PoeAdaptive.PreloadScan.exe` или запустите из PowerShell:
 
@@ -39,3 +39,7 @@ dotnet publish PoeAdaptive.PreloadScan/PoeAdaptive.PreloadScan.csproj -c Release
 ```
 
 Консольные синтетические тесты находятся в `PoeAdaptive.Tests/AdditionalChecks.cs`. Они **не проверяют** реальный игровой клиент и готовность функций будущей лиги.
+
+## Дополнение 0.1.1 по предзагрузке
+
+После отчёта со сканированием 53 204 файлов, но нулевым количеством прочитанных текстовых файлов, добавлены `FileTypes`, `RootGroups`, `BundleFilesFound`, `TextFileCandidates` и `IndexCandidates`. Исправлена ошибка: имена `cachedhlslshaders/dx12.bundle.bin` и аналогичные больше не считаются свидетельством кода функции BlackScreen. Отсутствие `_.index.bin` не означает, что архив повреждён или что в нём нет ресурсов лиги.
