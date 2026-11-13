@@ -53,7 +53,10 @@ public static class ResourceProbe
             if (BinaryPrimitives.ReadUInt32LittleEndian(header[8..]) != 3) throw new InvalidDataException("Поддерживается только Windows GGPK v3 с Bundles2.");
             using var ggpk = new GGPK(input, true);
             if (ggpk.Root["Bundles2"] is not DirectoryRecord bundles || bundles["_.index.bin"] is not FileRecord index)
-                throw new InvalidDataException("В GGPK нет Bundles2/_.index.bin.");
+            {
+                var inventory = GgpkStructureInspector.Describe(ggpk, input.Length);
+                throw new InvalidDataException(GgpkStructureInspector.Explain(inventory));
+            }
             using var indexStream = new GGFileStream(index);
             ValidateBundle(indexStream);
             return ResourceFormat.Ggpk;
