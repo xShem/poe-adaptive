@@ -72,6 +72,12 @@ jobs:
               assert {"PoeAdaptive.PreloadScan.exe", "README-RU.md"}.issubset(archive.namelist())
               assert not any(n.lower().startswith("oo2core") for n in archive.namelist())
           PY
+          # Older queued runs must not publish an outdated binary with the same version.
+          head="$(gh api "repos/$GH_REPO/branches/feature/preload-bundle-deep-scan" --jq '.commit.sha')"
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "Stale source commit: publishing skipped"
+            exit 0
+          fi
           tag="preloadscan-v0.2.0"
           if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
             echo "Release already exists; will not overwrite"
