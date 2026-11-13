@@ -6,18 +6,20 @@ try
 {
     if (args.Any(a => a is "--help" or "-h"))
     {
-        Console.WriteLine("PoE Adaptive GGPK Map 0.3.0 — карта файлов и структуры официального PoE 1");
+        Console.WriteLine("PoE Adaptive GGPK Map 0.3.1 — карта файлов и структуры официального PoE 1");
         Console.WriteLine("Перетащите Content.ggpk на EXE или запустите:");
         Console.WriteLine("  PoeAdaptive.PreloadScan.exe [Content.ggpk] [report.zip]");
         Console.WriteLine("  PoeAdaptive.PreloadScan.exe --inventory-only [Content.ggpk]");
         Console.WriteLine("  PoeAdaptive.PreloadScan.exe --map-all [Content.ggpk]");
+        Console.WriteLine("  PoeAdaptive.PreloadScan.exe --focus [Content.ggpk]");
         Console.WriteLine("  PoeAdaptive.PreloadScan.exe --quick-json [Content.ggpk] [report.json]");
         Console.WriteLine("По умолчанию: все физические файлы и заголовки bundles плюс до 256 МиБ выборки Oodle.");
-        Console.WriteLine("--map-all: все записи плюс чтение содержимого до 8 ГиБ (без изменения GGPK).");
+        Console.WriteLine("--map-all: весь контент до 8 ГиБ (только чтение).");
+        Console.WriteLine("--focus: полный просмотр выбранных PoE1 bundles, до 1 ГиБ декодирования.");
         return 0;
     }
     var commands = args.Where(a => a.StartsWith("--", StringComparison.Ordinal)).ToHashSet();
-    if (commands.Except(["--inventory-only", "--map-all", "--quick-json"]).Any() ||
+    if (commands.Except(["--inventory-only", "--map-all", "--focus", "--quick-json"]).Any() ||
         commands.Count > 1)
         throw new ArgumentException("Неизвестный или несовместимый параметр. Используйте --help.");
     var options = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
@@ -38,7 +40,7 @@ try
     if (!Directory.Exists(desktop)) desktop = Path.GetTempPath();
     bool quick = commands.Contains("--quick-json");
     var extension = quick ? ".json" : ".zip";
-    var defaultName = "PoE-GGPK-" + (quick ? "quick-" : "FULL-MAP-") +
+    var defaultName = "PoE-GGPK-" + (quick ? "quick-" : commands.Contains("--focus") ? "FOCUS-" : "FULL-MAP-") +
         DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" +
         Guid.NewGuid().ToString("N")[..6] + extension;
     var output = options.Length > 1 ? Path.GetFullPath(options[1]) :
@@ -63,7 +65,8 @@ try
     else
     {
         var mode = commands.Contains("--inventory-only") ? MapMode.InventoryOnly :
-            commands.Contains("--map-all") ? MapMode.Extended : MapMode.Sample;
+            commands.Contains("--map-all") ? MapMode.Extended :
+            commands.Contains("--focus") ? MapMode.Focused : MapMode.Sample;
         Console.WriteLine("Собираю карту структуры GGPK. Архив открыт только для чтения.");
         Console.WriteLine("В ZIP попадут только списки путей, структуры заголовков и ограниченные фрагменты.");
         var result = GgpkMapExporter.Export(source, output, mode, Console.WriteLine, cancellation.Token);
@@ -72,6 +75,8 @@ try
             $"проверенных заголовков: {result.BundleHeadersValid:N0}.");
         Console.WriteLine($"Декодировано: {result.ContentBytesDecoded / (1024 * 1024):N0} МиБ; " +
             $"сигналов функций: {result.FeatureSignalsFound:N0}; ссылок: {result.AssetReferencesFound:N0}.");
+        if (mode == MapMode.Focused)
+            Console.WriteLine($"Целевые bundles: {result.ContentBundlesScanned}/{result.FocusBundlesPlanned}; полностью прочитаны: {result.FocusScanComplete}.");
         Console.WriteLine("Полнота: физических записей = " + result.PhysicalTraversalComplete +
             "; всего содержимого bundles = " + result.ContentScanComplete + ".");
         Console.WriteLine("Нет индекса — нет подтверждённых имён виртуальных файлов. Это не средство изменения игры.");

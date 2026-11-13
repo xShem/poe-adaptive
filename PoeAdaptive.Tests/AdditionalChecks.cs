@@ -185,6 +185,27 @@ static class AdditionalChecks
             Check(doc.RootElement.GetProperty("VirtualFilesListed").GetBoolean() == false);
             Check(BuildStore.HashFile(source) == before);
         });
+        test("Focused PoE1 audit selects true patch-source bundles and flags references", () =>
+        {
+            var map = PoeAdaptive.PreloadScan.GgpkMapExporter.IsPoE1FocusBundle;
+            Check(map("Bundles2/Folders/metadata/environmentsettings_3.bundle.bin"));
+            Check(map("Bundles2/Folders/metadata/monsters.bundle.bin"));
+            Check(map("Bundles2/Folders/metadata/statdescriptions_1.bundle.bin"));
+            Check(map("Bundles2/Folders/metadata/particles.bundle.bin"));
+            Check(map("Bundles2/Folders/metadata/effects_B.bundle.bin"));
+            Check(map("Bundles2/Folders/shaders.bundle.bin"));
+            Check(!map("Bundles2/Folders/metadata/4/terrain.bundle.bin"));
+            Check(!map("Bundles2/Art/particles/environment_effects/League_3.bundle.bin"));
+            var source = PoeAdaptive.PreloadScan.GgpkMapExporter.IsLikelyFeatureSource;
+            Check(source("Fog", "Bundles2/Folders/metadata/environmentsettings.bundle.bin"));
+            Check(source("Shadow", "Bundles2/Folders/metadata/environmentsettings_1.bundle.bin"));
+            Check(source("Minimap", "Bundles2/Folders/shaders.bundle.bin"));
+            Check(!source("MonsterHP", "Bundles2/Folders/metadata/statdescriptions.bundle.bin"));
+            Check(source("MonsterHP", "Bundles2/Folders/metadata/monsters.bundle.bin"));
+            Check(!source("Particles", "Bundles2/Folders/metadata/environmentsettings.bundle.bin"));
+            Check(source("Particles", "Bundles2/Folders/metadata/particles.bundle.bin"));
+            Check(PoeAdaptive.PreloadScan.GgpkMapExporter.FocusBudget == 1024L * 1024 * 1024);
+        });
         test("Deep scanner excludes non-Delirium environment paths from evidence", () =>
         {
             var unrelated = Encoding.Unicode.GetBytes("Metadata/Effects/Environment/act1/vfx/snowfall.ao");
