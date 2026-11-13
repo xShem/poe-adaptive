@@ -46,7 +46,7 @@ public static class DeepBundleScanner
         new("Shadow", ["\"shadows_enabled\""]),
         new("Light", ["\"directional_light\""]),
         new("Corpse", ["DisableRendering", "on_spawned_dead"]),
-        new("Delirium", ["league_affliction", "Metadata/Effects/Environment"]),
+        new("Delirium", ["league_affliction", "LeagueAffliction"]),
         new("Particles", ["particle_emitter", "Metadata/Particles"]),
         new("Effects", ["AnimatedRender", "ClientAnimationController"]),
         new("BlackScreen", ["\"post_processing\"", "\"global_illumination\"", "postprocess"])
@@ -274,6 +274,18 @@ public static class DeepBundleScanner
             read, invalid, failures, chunksRead, bytesRead, truncated,
             Rules.Select(r => new DeepFeatureFinding(r.Name, matches[r.Name], evidence[r.Name].ToArray())).ToArray(),
             warnings.ToArray());
+    }
+
+    /// <summary>Pure evidence predicate used by regression tests; never equates generic environment assets with Delirium.</summary>
+    public static bool HasFeatureIndicator(string feature, ReadOnlySpan<byte> bytes)
+    {
+        var rule = Rules.FirstOrDefault(r => r.Name.Equals(feature, StringComparison.Ordinal));
+        if (rule is null) return false;
+        foreach (var sign in rule.Indicators)
+            if (bytes.IndexOf(Encoding.UTF8.GetBytes(sign)) >= 0 ||
+                bytes.IndexOf(Encoding.Unicode.GetBytes(sign)) >= 0)
+                return true;
+        return false;
     }
 
     private static void ScanChunk(string bundle, long blockOffset, ReadOnlySpan<byte> bytes,

@@ -141,6 +141,15 @@ static class AdditionalChecks
             Check(result.Warnings.Any(w => w.Contains("не декодируется")));
             Check(BuildStore.HashFile(archivePath) == checksum);
         });
+        test("Deep scanner excludes non-Delirium environment paths from evidence", () =>
+        {
+            var unrelated = Encoding.Unicode.GetBytes("Metadata/Effects/Environment/act1/vfx/snowfall.ao");
+            Check(!PoeAdaptive.PreloadScan.DeepBundleScanner.HasFeatureIndicator("Delirium", unrelated));
+            var actual = Encoding.Unicode.GetBytes("Metadata/Effects/Environment/league_affliction/affliction.ao");
+            Check(PoeAdaptive.PreloadScan.DeepBundleScanner.HasFeatureIndicator("Delirium", actual));
+            Check(!PoeAdaptive.PreloadScan.DeepBundleScanner.HasFeatureIndicator("Delirium",
+                Encoding.UTF8.GetBytes("Metadata/Effects/Environment/maps/other.ao")));
+        });
         test("Deep PoE1 bundle scanner validates Oodle envelope without native DLL", () =>
         {
             var content = BundleEnvelope([1, 2, 3, 4]);
