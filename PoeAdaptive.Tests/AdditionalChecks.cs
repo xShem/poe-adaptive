@@ -77,6 +77,41 @@ static class AdditionalChecks
         });
         var containerRoot = Area("Standalone GGPK"); var container = Path.Combine(containerRoot, "Content.ggpk");
         CreateGgpk(container, BundleEnvelope([4, 3, 2, 1]));
+        test("Unsupported standalone GGPK is classified without writes or false Steam assumptions", () =>
+        {
+            var noIndex = Path.Combine(Area("standalone unsupported GGPK"), "Content.ggpk");
+            // Real GGPK v3 root record, intentionally without Bundles2/_.index.bin.
+            using (var output = File.Create(noIndex))
+            using (var writer = new BinaryWriter(output))
+            {
+                writer.Write(28); writer.Write(0x4B504747); writer.Write(3); writer.Write(28L); writer.Write(0L);
+                writer.Write(50); writer.Write(0x52494450); writer.Write(1); writer.Write(0); writer.Write(new byte[32]); writer.Write((short)0);
+            }
+            using (var archive = new GGPK(noIndex))
+            {
+                archive.Root.FindOrAddFile("Metadata/example.txt", out var sample);
+                sample.Write("synthetic"u8);
+                archive.Root.FindOrAddDirectory("Bundles2", out _);
+                archive.Root.FindOrAddFile("Legacy/_.index.bin", out var alternate);
+                alternate.Write("not-bundles"u8);
+            }
+            var checksum = BuildStore.HashFile(noIndex);
+            var report = GgpkStructureInspector.Inspect(noIndex);
+            Check(report.GgpkVersion == 3 && report.Bundles2Found && !report.Bundles2IndexFound);
+            Check(report.Classification == "bundles2-index-missing");
+            Check(report.RootEntries.Contains("Bundles2/") &&
+                report.OtherIndexCandidates.Contains("Legacy/_.index.bin"));
+            try
+            {
+                ResourceProbe.Inspect(noIndex);
+                throw new Exception("Unsupported layout should be rejected");
+            }
+            catch (InvalidDataException ex)
+            {
+                Check(ex.Message.Contains("Legacy/_.index.bin") && ex.Message.Contains("только на чтение"));
+            }
+            Check(BuildStore.HashFile(noIndex) == checksum);
+        });
         test("Real GGPK record reader is byte-preserving with explicit read-only stream", () =>
         {
             var before = BuildStore.HashFile(container);
