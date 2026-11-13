@@ -307,7 +307,7 @@ public static class GgpkMapExporter
                 Path.GetFileName(f.Path).Equals("_.index.bin", StringComparison.OrdinalIgnoreCase) ||
                 Path.GetFileName(f.Path).Equals("index.bin", StringComparison.OrdinalIgnoreCase))
             .Select(f => f.Path).Order(StringComparer.OrdinalIgnoreCase).Take(32).ToArray();
-        var summary = new MapScanStats(1, "0.3.0", Path.GetFileName(path), initialLength, ggpk.Version,
+        var summary = new MapScanStats(1, "0.3.1", Path.GetFileName(path), initialLength, ggpk.Version,
             root["Bundles2"] is DirectoryRecord, indexExists, fileList.Count, directories.Count,
             nodes, complete, bundleList.Count, validBundleList.Count, invalid,
             encodedBytes, decodedBytesTotal, indexLike,
