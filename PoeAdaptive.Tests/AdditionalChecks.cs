@@ -127,7 +127,7 @@ static class AdditionalChecks
                 archive.Root.FindOrAddFile("metadata/characters/character.ot", out var camera);
                 camera.Write(Encoding.Unicode.GetBytes("on_initial_position_set = {CreateCameraZoomNode(5000.0, 5000.0, 2.4);}"));
                 archive.Root.FindOrAddFile("metadata/environmentsettings/test.env", out var env);
-                env.Write(Encoding.Unicode.GetBytes("{\\\"rain_intensity\\\": 2.0, \\\"clouds_intensity\\\": 0.5}"));
+                env.Write(Encoding.Unicode.GetBytes("""{"rain_intensity": 2.0, "clouds_intensity": 0.5}"""));
                 archive.Root.FindOrAddFile("metadata/images/unrelated.bin", out var binary);
                 binary.Write([0, 1, 2, 3, 4]);
             }
