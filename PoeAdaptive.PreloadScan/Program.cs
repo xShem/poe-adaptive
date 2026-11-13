@@ -38,6 +38,10 @@ try
     long oldSize = before.Length;
     DateTime oldWriteTime = before.LastWriteTimeUtc;
     var report = PreloadScanner.Scan(source, Console.WriteLine);
+    // Load optional Oodle only from our own executable directory.
+    // Findings from packed bundles must remain distinct from direct-file evidence.
+    var deep = DeepBundleScanner.Scan(source, Console.WriteLine);
+    report = report with { DeepBundles = deep };
     before.Refresh();
     if (before.Length != oldSize || before.LastWriteTimeUtc != oldWriteTime)
         throw new IOException("Файл изменился во время проверки; отчёт не публикуется.");
@@ -56,7 +60,13 @@ try
     foreach (var feature in report.Features.Where(x => x.TextMatches > 0 || x.PathCandidates > 0))
         Console.WriteLine(feature.Feature + ": " + feature.Verdict +
             ", текст: " + feature.TextMatches + ", пути: " + feature.PathCandidates);
-    Console.WriteLine("ВНИМАНИЕ: это поиск признаков, не подтверждение работы патчей. Упакованные bundles не анализируются.");
+    Console.WriteLine("Глубокое сканирование: " + deep.Status + "; bundles: " + deep.BundlesRead +
+        "; Oodle-блоков: " + deep.ChunksDecoded + "; объём: " + deep.BytesDecoded / 1048576 + " МиБ.");
+    foreach (var feature in deep.Features.Where(x => x.Matches > 0))
+        Console.WriteLine("  " + feature.Feature + ": " + feature.Matches + " признаков в распакованных блоках.");
+    foreach (var warning in deep.Warnings.Take(3))
+        Console.WriteLine("ПРИМЕЧАНИЕ: " + warning);
+    Console.WriteLine("ВНИМАНИЕ: совпадения не доказывают работоспособность патча; без индекса нет имён внутренних ресурсов.");
     if (args.Length == 0)
     {
         Console.WriteLine("Нажмите Enter для выхода.");

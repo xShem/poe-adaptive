@@ -20,6 +20,15 @@
         "dependencies": {
           "LibGGPK3.LibGGPK3": "[2.7.5, 2.7.5]"
         }
+      },
+      "LibGGPK3.LibBundle3": {
+        "type": "Direct",
+        "requested": "[2.7.5, 2.7.5]",
+        "resolved": "2.7.5",
+        "contentHash": "O0+Sae/XKbJLmfufU2+/fGUTI9l6j3NVQrRlfJfEyymO5s6uyr7ADglHbc9OY7Ntpb/7hXRCWvdpolEzG/JXzQ==",
+        "dependencies": {
+          "aianlinb.SystemExtensions": "1.8.0"
+        }
       }
     },
     "net10.0/win-x64": {}

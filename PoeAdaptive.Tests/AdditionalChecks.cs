@@ -141,6 +141,25 @@ static class AdditionalChecks
             Check(result.Warnings.Any(w => w.Contains("не декодируется")));
             Check(BuildStore.HashFile(archivePath) == checksum);
         });
+        test("Deep PoE1 bundle scanner validates Oodle envelope without native DLL", () =>
+        {
+            var content = BundleEnvelope([1, 2, 3, 4]);
+            Check(PoeAdaptive.PreloadScan.DeepBundleScanner.TryParseEnvelope(
+                content.AsSpan(0, 60), content.Length, out var metadata));
+            Check(metadata!.UncompressedSize == 4 && metadata.ChunkCount == 1 && metadata.ChunkSize == 262144);
+            Check(PoeAdaptive.PreloadScan.DeepBundleScanner.ValidateChunkLengths(content.AsSpan(60, 4), metadata));
+            var broken = (byte[])content.Clone();
+            broken[60] = 99;
+            Check(!PoeAdaptive.PreloadScan.DeepBundleScanner.ValidateChunkLengths(broken.AsSpan(60, 4), metadata));
+            var fakeSize = (byte[])content.Clone();
+            fakeSize[36] = 255;
+            Check(!PoeAdaptive.PreloadScan.DeepBundleScanner.TryParseEnvelope(
+                fakeSize.AsSpan(0, 60), fakeSize.Length, out _));
+            Check(!PoeAdaptive.PreloadScan.DeepBundleScanner.TryParseEnvelope(
+                content.AsSpan(0, 60), content.Length + 100, out _));
+            Check(PoeAdaptive.PreloadScan.DeepBundleScanner.MaxDecodedBytes == 64 * 1024 * 1024);
+            Check(PoeAdaptive.PreloadScan.DeepBundleScanner.MaxChunksPerBundle <= 2);
+        });
         test("Preload scanner avoids false shader candidates in compressed bundle filenames", () =>
         {
             Check(!PoeAdaptive.PreloadScan.PreloadScanner.MatchesPathHint(
