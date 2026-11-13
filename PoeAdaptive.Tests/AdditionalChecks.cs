@@ -141,6 +141,17 @@ static class AdditionalChecks
             Check(result.Warnings.Any(w => w.Contains("не декодируется")));
             Check(BuildStore.HashFile(archivePath) == checksum);
         });
+        test("Preload scanner avoids false shader candidates in compressed bundle filenames", () =>
+        {
+            Check(!PoeAdaptive.PreloadScan.PreloadScanner.MatchesPathHint(
+                "Bundles2/Folders/cachedhlslshaders/dx12.bundle.bin", "shaders/"));
+            Check(PoeAdaptive.PreloadScan.PreloadScanner.MatchesPathHint(
+                "Metadata/shaders/minimap_visibility_pixel.hlsl", "shaders/"));
+            Check(PoeAdaptive.PreloadScan.PreloadScanner.MatchesPathHint(
+                "metadata/characters/character.ot", "metadata/characters/character.ot"));
+            Check(!PoeAdaptive.PreloadScan.PreloadScanner.MatchesPathHint(
+                "metadata/characters/character.ot.backup", "metadata/characters/character.ot"));
+        });
         test("Preload scanner refuses non GGPK without modifying it", () =>
         {
             var path = Path.Combine(Area("invalid preload"), "Content.ggpk");
