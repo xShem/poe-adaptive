@@ -210,8 +210,8 @@ public static class GgpkMapExporter
         var budget = mode == MapMode.Extended ? ExtendedBudget : SampleBudget;
         var bundleCap = mode == MapMode.Sample ? 1024 : int.MaxValue;
 
-        using (var hitWriter = NewLines(zip, "feature-evidence.jsonl"))
-        using (var refWriter = NewLines(zip, "asset-references.jsonl"))
+        var hitEvents = new List<object>();
+        var referenceEvents = new List<object>();
         {
             if (oodleReady)
             {
@@ -238,7 +238,7 @@ public static class GgpkMapExporter
                             var segment = bundle.ReadWithoutCache(checked((int)offset), size);
                             scannedChunks++;
                             decompressed += segment.Count;
-                            WriteEvidence(segment.AsSpan(), item.Path, offset, hitWriter, refWriter, ref signals, ref references);
+                            WriteEvidence(segment.AsSpan(), item.Path, offset, hitEvents, referenceEvents, ref signals, ref references);
                         }
                         if (scannedBundles % 100 == 0)
                             progress?.Invoke($"Bundles {scannedBundles:N0}/{order.Length:N0}; {decompressed / (1024 * 1024):N0} МиБ проверено…");
@@ -252,6 +252,10 @@ public static class GgpkMapExporter
                 }
             }
         }
+
+        // ZipArchive.Create permits only one open entry stream at a time.
+        WriteJsonLines(zip, "feature-evidence.jsonl", hitEvents, cancel);
+        WriteJsonLines(zip, "asset-references.jsonl", referenceEvents, cancel);
 
         var completeContent = oodleReady && mode == MapMode.Extended && !reachedBudget &&
             scannedBundles == validBundleList.Count && failures.Count == 0 && complete;
@@ -303,7 +307,7 @@ public static class GgpkMapExporter
         count <= 1 ? [0] : new[] { 0, count / 2, count - 1 }.Distinct().ToArray();
 
     private static void WriteEvidence(ReadOnlySpan<byte> chunk, string path, long offset,
-        StreamWriter hits, StreamWriter refs, ref long hitCount, ref long refCount)
+        List<object> hits, List<object> refs, ref long hitCount, ref long refCount)
     {
         foreach (var (feature, indicator, utf8, utf16) in Signs)
         {
@@ -313,7 +317,7 @@ public static class GgpkMapExporter
                 int index = chunk.IndexOf(sign);
                 if (index < 0) continue;
                 hitCount++;
-                WriteLine(hits, new { Feature = feature, Bundle = path, Offset = offset + index,
+                hits.Add(new { Feature = feature, Bundle = path, Offset = offset + index,
                     Coding = coding, Indicator = indicator, VirtualFileResolved = false,
                     Excerpt = ClipSnippet(chunk, index, sign.Length, coding) });
             }
@@ -336,7 +340,7 @@ public static class GgpkMapExporter
                 hit += start;
                 refCount++;
                 n++;
-                WriteLine(refs, new { Bundle = path, Offset = offset + hit, Coding = coding,
+                refs.Add(new { Bundle = path, Offset = offset + hit, Coding = coding,
                     Reference = CandidatePath(chunk[hit..], coding), VirtualFileResolved = false });
                 start = hit + token.Length;
             }
