@@ -241,7 +241,7 @@ public static class PreloadScanner
         var groups = rootGroups.Select(kv => new ScanRootGroup(kv.Key, kv.Value.Count, kv.Value.Bytes))
             .OrderByDescending(v => v.Files).ThenBy(v => v.Root, StringComparer.OrdinalIgnoreCase)
             .Take(16).ToArray();
-        return new(2, "0.1.1", DateTimeOffset.UtcNow, Path.GetFileName(path),
+        return new(2, "0.2.1", DateTimeOffset.UtcNow, Path.GetFileName(path),
             originalLength, version, bundleRoot is not null, hasBundleIndex, rootNames,
             visited, totalFiles, sampled, sampledBytes, truncated, features,
             types, groups, bundleFileCount, eligibleTextCount, indexCandidates.ToArray(),

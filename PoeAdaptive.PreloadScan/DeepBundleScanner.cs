@@ -83,7 +83,14 @@ public static class DeepBundleScanner
                 return false;
             }
             var file = paths[0];
-            var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file)));
+            var info = new FileInfo(file);
+            if (info.Length < 4096 || info.Length > 32L * 1024 * 1024)
+            {
+                issue = "Размер Oodle DLL выходит за допустимые пределы (4 КиБ–32 МиБ).";
+                return false;
+            }
+            using var nativeSource = File.OpenRead(file);
+            var hash = Convert.ToHexString(SHA256.HashData(nativeSource));
             if (!NativeLibrary.TryLoad(Path.GetFullPath(file), out var loaded))
             {
                 issue = "Не удалось загрузить локальную Oodle DLL (нужна совместимая Windows x64).";
@@ -263,7 +270,7 @@ public static class DeepBundleScanner
         warnings.Add("_.index.bin не требуется для чтения отдельных bundles, но имена и границы ресурсов внутри них не восстановлены.");
         warnings.Add("Отчёт основан на ограниченной выборке распакованных блоков; отсутствие совпадений ничего не доказывает.");
         warnings.Add("Сканирование не изменяет файлы игры и не подтверждает работоспособность патчей.");
-        return new(1, "sampled", "0.2.0", dllName, dllSha, candidates.Count, selected.Count,
+        return new(1, "sampled", "0.2.1", dllName, dllSha, candidates.Count, selected.Count,
             read, invalid, failures, chunksRead, bytesRead, truncated,
             Rules.Select(r => new DeepFeatureFinding(r.Name, matches[r.Name], evidence[r.Name].ToArray())).ToArray(),
             warnings.ToArray());
@@ -304,6 +311,6 @@ public static class DeepBundleScanner
             or '"' or '\'' or '(' or ')' or ',' or '{' or '}' ? ch : ' ').Take(96).ToArray());
 
     private static DeepBundleReport Empty(string status, string name, string hash, string[] warnings) =>
-        new(1, status, "0.2.0", name, hash, 0, 0, 0, 0, 0, 0, 0, true,
+        new(1, status, "0.2.1", name, hash, 0, 0, 0, 0, 0, 0, 0, true,
             Rules.Select(r => new DeepFeatureFinding(r.Name, 0, [])).ToArray(), warnings);
 }
