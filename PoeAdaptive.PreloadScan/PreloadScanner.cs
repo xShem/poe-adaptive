@@ -227,7 +227,8 @@ public static class PreloadScanner
             var t = textCounts[rule.Name];
             var p = pathCounts[rule.Name];
             return new FeatureFinding(rule.Name,
-                t > 0 ? "text-indicators-found" : p > 0 ? "path-candidates-only" : "no-evidence-in-scanned-direct-files",
+                t > 0 ? "text-indicators-found" : p > 0 ? "path-candidates-only" :
+                    sampled == 0 ? "not-inspected-no-readable-text-assets" : "no-evidence-in-scanned-direct-files",
                 t, p, evidence[rule.Name].ToArray());
         }).ToArray();
 
