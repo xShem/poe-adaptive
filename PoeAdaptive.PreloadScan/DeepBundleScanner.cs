@@ -281,9 +281,11 @@ public static class DeepBundleScanner
     {
         var rule = Rules.FirstOrDefault(r => r.Name.Equals(feature, StringComparison.Ordinal));
         if (rule is null) return false;
-        return rule.Indicators.Any(sign =>
-            bytes.IndexOf(Encoding.UTF8.GetBytes(sign)) >= 0 ||
-            bytes.IndexOf(Encoding.Unicode.GetBytes(sign)) >= 0);
+        foreach (var sign in rule.Indicators)
+            if (bytes.IndexOf(Encoding.UTF8.GetBytes(sign)) >= 0 ||
+                bytes.IndexOf(Encoding.Unicode.GetBytes(sign)) >= 0)
+                return true;
+        return false;
     }
 
     private static void ScanChunk(string bundle, long blockOffset, ReadOnlySpan<byte> bytes,
