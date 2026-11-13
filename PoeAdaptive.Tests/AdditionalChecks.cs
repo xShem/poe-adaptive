@@ -164,6 +164,26 @@ static class AdditionalChecks
                 PoeAdaptive.PreloadScan.MapMode.InventoryOnly));
             Check(BuildStore.HashFile(archivePath) == checksum);
         });
+        test("GGPK map inventories a bundle envelope without requiring Oodle", () =>
+        {
+            var root = Area("GGPK bundle map");
+            var source = Path.Combine(root, "Content.ggpk");
+            CreateGgpk(source, BundleEnvelope([1, 2, 3, 4]));
+            var outFile = Path.Combine(Area("map reports"), "layout.zip");
+            var before = BuildStore.HashFile(source);
+            var map = PoeAdaptive.PreloadScan.GgpkMapExporter.Export(
+                source, outFile, PoeAdaptive.PreloadScan.MapMode.InventoryOnly);
+            Check(map.BundleRecords == 1 && map.BundleHeadersValid == 1 &&
+                map.BundleHeadersInvalid == 0 && map.RequiredIndexFound);
+            using var zip = System.IO.Compression.ZipFile.OpenRead(outFile);
+            using var reader = new StreamReader(zip.GetEntry("bundle-layouts.jsonl")!.Open());
+            var line = reader.ReadLine()!;
+            using var doc = JsonDocument.Parse(line);
+            Check(doc.RootElement.GetProperty("HeaderValid").GetBoolean());
+            Check(doc.RootElement.GetProperty("ChunkCount").GetInt32() == 1);
+            Check(doc.RootElement.GetProperty("VirtualFilesListed").GetBoolean() == false);
+            Check(BuildStore.HashFile(source) == before);
+        });
         test("Deep scanner excludes non-Delirium environment paths from evidence", () =>
         {
             var unrelated = Encoding.Unicode.GetBytes("Metadata/Effects/Environment/act1/vfx/snowfall.ao");
