@@ -1,0 +1,82 @@
+name: Publish verified GGPK diagnostic build
+on:
+  push:
+    branches: [release/ggpk-diagnostic-0.3.0]
+    paths: [.github/workflows/publish-ggpk-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_RUN_ID: "43434842236"
+      SOURCE_SHA: "90c10b9e0db7848212a8c73742973671092e917c"
+      RELEASE_TAG: "v0.3.0-ggpk-diagnostic"
+    steps:
+      - name: Confirm exact successful Windows test run and source
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          repo = os.environ["GH_REPO"]
+          run_id = os.environ["SOURCE_RUN_ID"]
+          info = json.loads(subprocess.check_output(["gh", "api", f"repos/{repo}/actions/runs/{run_id}"], text=True))
+          assert info["status"] == "completed" and info["conclusion"] == "success", "Windows CI did not pass"
+          assert info["head_sha"] == os.environ["SOURCE_SHA"], "CI source does not match pinned commit"
+          assert info["head_repository"]["full_name"] == repo
+          assert info["path"] == ".github/workflows/ci.yml"
+          print("Validated successful source commit:", info["head_sha"])
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: PoeAdaptive-win-x64
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: release
+      - name: Verify all packaged file hashes and application version
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, pathlib, json, zipfile
+          root = pathlib.Path("release")
+          sums = {}
+          for line in (root / "SHA256SUMS.txt").read_text().splitlines():
+              digest, name = line.split("  ", 1)
+              sums[name] = digest.lower()
+          expected = {
+              "PoeAdaptive-0.3.0-win-x64.zip": "PoeAdaptive.exe",
+              "PoeAdaptive-Builder-0.3.0-win-x64.zip": "PoeAdaptive.Builder.exe",
+              "PoeAdaptive-0.3.0-source.zip": "PoeAdaptive/PoeRedux.slnx",
+          }
+          for name, required_file in expected.items():
+              p = root / name
+              if not p.is_file() or hashlib.sha256(p.read_bytes()).hexdigest() != sums.get(name):
+                  raise SystemExit("Missing file or bad SHA256: " + name)
+              with zipfile.ZipFile(p) as z:
+                  if z.testzip() or required_file not in z.namelist():
+                      raise SystemExit("Broken archive: " + name)
+                  if any(x.lower().endswith("oo2core.dll") for x in z.namelist()):
+                      raise SystemExit("Proprietary Oodle DLL cannot be redistributed")
+          info = json.loads((root / "build-info.json").read_text())
+          if info["sourceCommit"] != os.environ["SOURCE_SHA"] or info["version"] != "0.3.0" or info["localChanges"]:
+              raise SystemExit("Binary-source provenance mismatch")
+          (root / "GGPK-DIAGNOSTICS-README.txt").write_text(
+              "PoE Adaptive 0.3.0 - experimental Windows x64 diagnostic build.\n"
+              "For GGPK without Bundles2/_.index.bin, run PoeAdaptive.Diagnostics.exe --inspect-ggpk "
+              '"D:\\\\Games\\\\Path of Exile\\\\Content.ggpk" "D:\\\\ggpk-structure.json".\n'
+              "This only reads the GGPK directory and does not patch unsupported layouts.\n"
+              "Source: " + os.environ["SOURCE_SHA"] + "\n"
+              "Windows CI: https://github.com/" + os.environ["GH_REPO"] + "/actions/runs/" + os.environ["SOURCE_RUN_ID"] + "\n",
+              encoding="utf-8")
+          PY
+      - name: Publish direct GitHub prerelease download
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Release already exists, refusing to overwrite it" >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG"             --repo "$GH_REPO"             --target "$SOURCE_SHA"             --prerelease             --title "PoE Adaptive 0.3.0 - GGPK diagnostics (test build)"             --notes "Windows x64. Diagnostic preview for GGPK layouts without Bundles2/_.index.bin. The included diagnostic executable can inspect the archive read-only. This build does not add patch support for unknown GGPK layouts. The published archives come from successful Windows CI run $SOURCE_RUN_ID at commit $SOURCE_SHA. No real-client compatibility is claimed."             release/PoeAdaptive-0.3.0-win-x64.zip             release/PoeAdaptive-Builder-0.3.0-win-x64.zip             release/PoeAdaptive-0.3.0-source.zip             release/SHA256SUMS.txt             release/build-info.json             release/GGPK-DIAGNOSTICS-README.txt
