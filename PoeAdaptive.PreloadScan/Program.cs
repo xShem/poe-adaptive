@@ -4,83 +4,89 @@ using PoeAdaptive.PreloadScan;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 try
 {
-    if (args is ["--help"] or ["-h"])
+    if (args.Any(a => a is "--help" or "-h"))
     {
-        Console.WriteLine("PoE Adaptive PreloadScan: PreloadScan.exe [Content.ggpk] [report.json]");
-        Console.WriteLine("Можно перетащить Content.ggpk на EXE. Архив открывается только для чтения.");
+        Console.WriteLine("PoE Adaptive GGPK Map 0.3.0 — карта файлов и структуры официального PoE 1");
+        Console.WriteLine("Перетащите Content.ggpk на EXE или запустите:");
+        Console.WriteLine("  PoeAdaptive.PreloadScan.exe [Content.ggpk] [report.zip]");
+        Console.WriteLine("  PoeAdaptive.PreloadScan.exe --inventory-only [Content.ggpk]");
+        Console.WriteLine("  PoeAdaptive.PreloadScan.exe --map-all [Content.ggpk]");
+        Console.WriteLine("  PoeAdaptive.PreloadScan.exe --quick-json [Content.ggpk] [report.json]");
+        Console.WriteLine("По умолчанию: все физические файлы и заголовки bundles плюс до 256 МиБ выборки Oodle.");
+        Console.WriteLine("--map-all: все записи плюс чтение содержимого до 8 ГиБ (без изменения GGPK).");
         return 0;
     }
-    var source = args.Length > 0 ? args[0] : "";
+    var commands = args.Where(a => a.StartsWith("--", StringComparison.Ordinal)).ToHashSet();
+    if (commands.Except(["--inventory-only", "--map-all", "--quick-json"]).Any() ||
+        commands.Count > 1)
+        throw new ArgumentException("Неизвестный или несовместимый параметр. Используйте --help.");
+    var options = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
+    bool interactive = options.Length == 0;
+    var source = options.Length == 0 ? "" : options[0];
     if (string.IsNullOrWhiteSpace(source))
     {
-        Console.Write("Перетащите сюда Content.ggpk (или вставьте путь) и нажмите Enter: ");
-        source = (Console.ReadLine() ?? "").Trim().Trim('"');
+        Console.Write("Перетащите Content.ggpk сюда или введите путь: ");
+        source = Console.ReadLine() ?? "";
     }
-    source = Path.GetFullPath(source.Trim('"'));
-    if (!File.Exists(source)) throw new FileNotFoundException("GGPK-файл не найден.");
+    source = Path.GetFullPath(source.Trim().Trim('"'));
+    if (!File.Exists(source)) throw new FileNotFoundException("Не найден файл GGPK.");
+    if (options.Length > 2) throw new ArgumentException("Укажите только GGPK и необязательный путь отчёта.");
+
     var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
     if (!Directory.Exists(desktop))
         desktop = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-    if (!Directory.Exists(desktop))
-        desktop = Path.GetTempPath();
-    var target = args.Length > 1 ? Path.GetFullPath(args[1]) :
-        Path.Combine(desktop, "PoE-GGPK-preload-report-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") +
-            "-" + Guid.NewGuid().ToString("N")[..6] + ".json");
-    var gameDirectory = Path.GetDirectoryName(source)!.TrimEnd(Path.DirectorySeparatorChar);
-    if (target.Equals(source, StringComparison.OrdinalIgnoreCase) ||
-        target.StartsWith(gameDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-        throw new IOException("Для безопасности отчёт нужно сохранить вне каталога GGPK.");
-    if (!Directory.Exists(Path.GetDirectoryName(target)))
-        throw new DirectoryNotFoundException("Каталог для отчёта не существует.");
+    if (!Directory.Exists(desktop)) desktop = Path.GetTempPath();
+    bool quick = commands.Contains("--quick-json");
+    var extension = quick ? ".json" : ".zip";
+    var defaultName = "PoE-GGPK-" + (quick ? "quick-" : "FULL-MAP-") +
+        DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" +
+        Guid.NewGuid().ToString("N")[..6] + extension;
+    var output = options.Length > 1 ? Path.GetFullPath(options[1]) :
+        Path.Combine(desktop, defaultName);
 
-    Console.WriteLine("Сканирование только для чтения. Ни один игровой файл не будет изменён.");
-    var before = new FileInfo(source);
-    long oldSize = before.Length;
-    DateTime oldWriteTime = before.LastWriteTimeUtc;
-    var report = PreloadScanner.Scan(source, Console.WriteLine);
-    // Load optional Oodle only from our own executable directory.
-    // Findings from packed bundles must remain distinct from direct-file evidence.
-    var deep = DeepBundleScanner.Scan(source, Console.WriteLine);
-    report = report with { DeepBundles = deep };
-    before.Refresh();
-    if (before.Length != oldSize || before.LastWriteTimeUtc != oldWriteTime)
-        throw new IOException("Файл изменился во время проверки; отчёт не публикуется.");
+    var sourceDir = Path.GetDirectoryName(source)!.TrimEnd(Path.DirectorySeparatorChar);
+    if (output.Equals(source, StringComparison.OrdinalIgnoreCase) ||
+        output.StartsWith(sourceDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        throw new IOException("Отчёт нельзя сохранять в каталоге игры.");
 
-    var staging = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
-    try
+    using var cancellation = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+    if (quick)
     {
-        File.WriteAllText(staging, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(staging, target, false);
+        var report = PreloadScanner.Scan(source, Console.WriteLine);
+        var deep = DeepBundleScanner.Scan(source, Console.WriteLine);
+        report = report with { DeepBundles = deep };
+        if (File.Exists(output)) throw new IOException("Отчёт уже существует.");
+        File.WriteAllText(output, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine("Сохранён прежний краткий JSON: " + output);
     }
-    finally { if (File.Exists(staging)) File.Delete(staging); }
-    Console.WriteLine();
-    Console.WriteLine("Отчёт создан: " + target);
-    Console.WriteLine("GGPK v" + report.GgpkVersion + "; прямых файлов: " + report.DirectFilesFound);
-    Console.WriteLine("Bundles2/_.index.bin: " + (report.Bundles2IndexPresent ? "найден" : "не найден"));
-    foreach (var feature in report.Features.Where(x => x.TextMatches > 0 || x.PathCandidates > 0))
-        Console.WriteLine(feature.Feature + ": " + feature.Verdict +
-            ", текст: " + feature.TextMatches + ", пути: " + feature.PathCandidates);
-    Console.WriteLine("Глубокое сканирование: " + deep.Status + "; bundles: " + deep.BundlesRead +
-        "; Oodle-блоков: " + deep.ChunksDecoded + "; объём: " + deep.BytesDecoded / 1048576 + " МиБ.");
-    foreach (var feature in deep.Features.Where(x => x.Matches > 0))
-        Console.WriteLine("  " + feature.Feature + ": " + feature.Matches + " признаков в распакованных блоках.");
-    foreach (var warning in deep.Warnings.Take(3))
-        Console.WriteLine("ПРИМЕЧАНИЕ: " + warning);
-    Console.WriteLine("ВНИМАНИЕ: совпадения не доказывают работоспособность патча; без индекса нет имён внутренних ресурсов.");
-    if (args.Length == 0)
+    else
     {
-        Console.WriteLine("Нажмите Enter для выхода.");
-        Console.ReadLine();
+        var mode = commands.Contains("--inventory-only") ? MapMode.InventoryOnly :
+            commands.Contains("--map-all") ? MapMode.Extended : MapMode.Sample;
+        Console.WriteLine("Собираю карту структуры GGPK. Архив открыт только для чтения.");
+        Console.WriteLine("В ZIP попадут только списки путей, структуры заголовков и ограниченные фрагменты.");
+        var result = GgpkMapExporter.Export(source, output, mode, Console.WriteLine, cancellation.Token);
+        Console.WriteLine("Готово: " + output);
+        Console.WriteLine($"Файлов GGPK: {result.PhysicalFiles:N0}; bundles: {result.BundleRecords:N0}; " +
+            $"проверенных заголовков: {result.BundleHeadersValid:N0}.");
+        Console.WriteLine($"Декодировано: {result.ContentBytesDecoded / (1024 * 1024):N0} МиБ; " +
+            $"сигналов функций: {result.FeatureSignalsFound:N0}; ссылок: {result.AssetReferencesFound:N0}.");
+        Console.WriteLine("Полнота: физических записей = " + result.PhysicalTraversalComplete +
+            "; всего содержимого bundles = " + result.ContentScanComplete + ".");
+        Console.WriteLine("Нет индекса — нет подтверждённых имён виртуальных файлов. Это не средство изменения игры.");
     }
+    if (interactive) { Console.WriteLine("Нажмите Enter."); Console.ReadLine(); }
     return 0;
+}
+catch (OperationCanceledException)
+{
+    Console.Error.WriteLine("Отменено. Неполный ZIP удалён, GGPK не изменён.");
+    return 2;
 }
 catch (Exception ex)
 {
     Console.Error.WriteLine("Диагностика не выполнена: " + ex.GetType().Name + ": " + ex.Message);
-    if (args.Length == 0)
-    {
-        Console.WriteLine("Нажмите Enter для выхода.");
-        Console.ReadLine();
-    }
+    if (args.Length == 0) { Console.WriteLine("Нажмите Enter."); Console.ReadLine(); }
     return 1;
 }
