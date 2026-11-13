@@ -16,7 +16,10 @@ public sealed record PreloadReport(int SchemaVersion, string ScannerVersion, Dat
     int DirectFilesSampled, long BytesSampled, bool Truncated,
     FeatureFinding[] Features, ScanFileType[] FileTypes, ScanRootGroup[] RootGroups,
     long BundleFilesFound, long TextFileCandidates, string[] IndexCandidates,
-    string[] Warnings, string Summary);
+    string[] Warnings, string Summary)
+{
+    public DeepBundleReport? DeepBundles { get; init; }
+}
 
 /// <summary>
 /// A bounded, strictly read-only search of ordinary GGPK directory files.
