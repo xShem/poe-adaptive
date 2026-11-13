@@ -140,6 +140,29 @@ static class AdditionalChecks
             Check(result.Features.Single(f => f.Feature == "Minimap").TextMatches == 0);
             Check(result.Warnings.Any(w => w.Contains("не декодируется")));
             Check(BuildStore.HashFile(archivePath) == checksum);
+            var mapPath = Path.Combine(Area("GGPK карта кириллица"), "physical-map.zip");
+            var map = PoeAdaptive.PreloadScan.GgpkMapExporter.Export(
+                archivePath, mapPath, PoeAdaptive.PreloadScan.MapMode.InventoryOnly);
+            Check(map.PhysicalFiles == 3 && map.PhysicalTraversalComplete && map.BundleRecords == 0);
+            Check(!map.RequiredIndexFound && map.ContentChunksScanned == 0 &&
+                !map.ContentScanComplete);
+            using (var zip = System.IO.Compression.ZipFile.OpenRead(mapPath))
+            {
+                Check(zip.GetEntry("summary.json") != null);
+                Check(zip.GetEntry("physical-files.jsonl") != null);
+                Check(zip.GetEntry("directories.jsonl") != null);
+                Check(zip.GetEntry("bundle-layouts.jsonl") != null);
+                Check(zip.GetEntry("feature-evidence.jsonl") != null);
+                Check(zip.GetEntry("asset-references.jsonl") != null);
+                using var reader = new StreamReader(zip.GetEntry("physical-files.jsonl")!.Open());
+                var filesText = reader.ReadToEnd();
+                Check(filesText.Contains("metadata/characters/character.ot") &&
+                    !filesText.Contains(Area("preload direct"), StringComparison.OrdinalIgnoreCase));
+            }
+            Throws<IOException>(() => PoeAdaptive.PreloadScan.GgpkMapExporter.Export(
+                archivePath, Path.Combine(Path.GetDirectoryName(archivePath)!, "unsafe.zip"),
+                PoeAdaptive.PreloadScan.MapMode.InventoryOnly));
+            Check(BuildStore.HashFile(archivePath) == checksum);
         });
         test("Deep scanner excludes non-Delirium environment paths from evidence", () =>
         {
