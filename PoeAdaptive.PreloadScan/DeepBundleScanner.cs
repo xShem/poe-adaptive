@@ -231,7 +231,7 @@ public static class DeepBundleScanner
                 using var stream = new GGFileStream(file);
                 using var bundle = new Bundle(stream, false);
                 read++;
-                var chosen = metadata.ChunkCount == 1 ? [0] :
+                int[] chosen = metadata.ChunkCount == 1 ? [0] :
                     new[] { 0, metadata.ChunkCount / 2 }.Distinct().ToArray();
                 foreach (var chunk in chosen.Take(MaxChunksPerBundle))
                 {
@@ -247,8 +247,7 @@ public static class DeepBundleScanner
                 if (read % 10 == 0)
                     progress?.Invoke($"Прочитано bundles: {read}; декодировано: {bytesRead / 1048576} МиБ…");
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or
-                ArgumentException or OverflowException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+            catch (Exception ex) when (ex is not OutOfMemoryException and not AccessViolationException)
             {
                 failures++;
                 if (warnings.Count < 8) warnings.Add("Не удалось декодировать " +
