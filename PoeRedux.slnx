@@ -7,4 +7,5 @@
   <Project Path="PoeAdaptive.BuildHost/PoeAdaptive.BuildHost.csproj" />
   <Project Path="PoeAdaptive.Builder/PoeAdaptive.Builder.csproj" />
   <Project Path="PoeAdaptive.Diagnostics/PoeAdaptive.Diagnostics.csproj" />
+  <Project Path="PoeAdaptive.PreloadScan/PoeAdaptive.PreloadScan.csproj" />
 </Solution>
